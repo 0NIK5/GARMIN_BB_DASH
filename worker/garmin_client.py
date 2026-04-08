@@ -1,5 +1,7 @@
 import logging
+import math
 import os
+import random
 from datetime import datetime, timedelta, timezone
 
 from garminconnect import (
@@ -88,3 +90,57 @@ class GarminClient:
 
         logger.info("Fetched %d heart rate points", len(entries))
         return entries
+
+
+class MockGarminClient:
+    """Мок-клиент для отладки без Garmin API.
+
+    Генерирует правдоподобный heart rate:
+      - базовая линия ~70 bpm (суточный синус +/- 10)
+      - мелкий шум +/- 5
+      - редкие всплески до 130-150 (имитация нагрузки)
+    Точки каждые 2 минуты — примерно так пишет реальный Garmin.
+    """
+
+    def __init__(self, username: str = "", password: str = ""):
+        self.username = username
+        self.password = password
+        # Фиксированный seed, чтобы между запусками всплески были воспроизводимыми
+        self._rng = random.Random(42)
+
+    def login(self) -> None:
+        logger.info("MockGarminClient: login skipped (mock mode)")
+
+    def get_heart_rate(self, start: datetime, end: datetime) -> list[dict]:
+        entries: list[dict] = []
+        # Округляем start до кратности 2 минут
+        current = start.replace(second=0, microsecond=0)
+        minutes_offset = current.minute % 2
+        if minutes_offset:
+            current += timedelta(minutes=(2 - minutes_offset))
+
+        while current <= end:
+            bpm = self._generate_bpm(current)
+            entries.append({"measured_at": current, "level": bpm})
+            current += timedelta(minutes=2)
+
+        logger.info("MockGarminClient: generated %d mock heart rate points", len(entries))
+        return entries
+
+    def _generate_bpm(self, dt: datetime) -> int:
+        # Суточный ритм: минимум ночью (~60), максимум днём (~80)
+        hour_of_day = dt.hour + dt.minute / 60
+        circadian = 70 + 10 * math.sin((hour_of_day - 6) / 24 * 2 * math.pi)
+
+        # Шум
+        noise = self._rng.uniform(-5, 5)
+
+        # Всплеск с вероятностью ~3% (имитация нагрузки)
+        spike = 0
+        # Семплируем rng по времени, чтобы одна и та же точка давала один результат
+        rng = random.Random(int(dt.timestamp()) // 120)
+        if rng.random() < 0.03:
+            spike = rng.uniform(30, 70)
+
+        bpm = int(round(circadian + noise + spike))
+        return max(40, min(180, bpm))

@@ -9,7 +9,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy import Column, DateTime, Integer, SmallInteger, create_engine, select
 from sqlalchemy.orm import Session, declarative_base
 
-from garmin_client import GarminClient
+from garmin_client import GarminClient, MockGarminClient
 from garminconnect import (
     GarminConnectAuthenticationError,
     GarminConnectConnectionError,
@@ -27,6 +27,7 @@ _DEFAULT_DB_PATH = os.path.join(_PROJECT_ROOT, "data", "body_battery.db")
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 POLL_MINUTES = int(os.getenv("POLL_MINUTES", "5"))  # для отладки heart rate — каждые 5 минут
 LOOKBACK_HOURS_INITIAL = int(os.getenv("LOOKBACK_HOURS_INITIAL", "6"))
+USE_MOCK = os.getenv("USE_MOCK", "0") == "1"
 
 Base = declarative_base()
 
@@ -106,15 +107,19 @@ def fetch_with_retry(client: GarminClient, start: datetime, end: datetime):
 
 def run_job():
     logger.info("=== Job started ===")
-    username = os.getenv("GARMIN_USERNAME", "")
-    password = os.getenv("GARMIN_PASSWORD", "")
 
-    if not username or not password:
-        logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы")
-        return
+    if USE_MOCK:
+        logger.info("Using MockGarminClient (USE_MOCK=1)")
+        client = MockGarminClient()
+    else:
+        username = os.getenv("GARMIN_USERNAME", "")
+        password = os.getenv("GARMIN_PASSWORD", "")
+        if not username or not password:
+            logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы (или установи USE_MOCK=1)")
+            return
+        client = GarminClient(username=username, password=password)
 
     try:
-        client = GarminClient(username=username, password=password)
         client.login()
 
         engine = get_engine()

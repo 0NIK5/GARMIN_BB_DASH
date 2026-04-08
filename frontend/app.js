@@ -1,58 +1,127 @@
 const API_BASE = "http://localhost:8000/api/v1";
+const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 минут
+
+let historyChart = null;
+
+/**
+ * Цветовая зона по пульсу (BPM):
+ *   зелёный: 50-90   (норма покоя)
+ *   жёлтый:  90-130  (умеренная нагрузка)
+ *   красный: <50 или >130
+ */
+function zoneFor(bpm) {
+  if (bpm == null) return "zone-unknown";
+  if (bpm < 50 || bpm > 130) return "zone-red";
+  if (bpm > 90) return "zone-yellow";
+  return "zone-green";
+}
+
+function colorFor(bpm) {
+  const zone = zoneFor(bpm);
+  return {
+    "zone-green": "#16a34a",
+    "zone-yellow": "#eab308",
+    "zone-red": "#dc2626",
+    "zone-unknown": "#6b7280",
+  }[zone];
+}
 
 async function fetchCurrent() {
-  const response = await fetch(`${API_BASE}/battery/current`);
-  return response.ok ? response.json() : null;
+  try {
+    const response = await fetch(`${API_BASE}/battery/current`);
+    return response.ok ? await response.json() : null;
+  } catch (err) {
+    console.error("fetchCurrent failed:", err);
+    return null;
+  }
 }
 
 async function fetchHistory() {
-  const response = await fetch(`${API_BASE}/battery/history?hours=24`);
-  return response.ok ? response.json() : null;
+  try {
+    const response = await fetch(`${API_BASE}/battery/history?hours=24`);
+    return response.ok ? await response.json() : null;
+  } catch (err) {
+    console.error("fetchHistory failed:", err);
+    return null;
+  }
 }
 
 function renderCurrent(data) {
   const container = document.getElementById("current-status");
   if (!data) {
-    container.textContent = "Ошибка загрузки данных";
+    container.innerHTML = `<div class="error">Ошибка загрузки данных</div>`;
     return;
   }
+  const zone = zoneFor(data.level);
+  const ts = data.timestamp ? new Date(data.timestamp).toLocaleString() : "—";
   container.innerHTML = `
-    <div class="metric">
+    <div class="metric ${zone}">
       <span class="value">${data.level}</span>
-      <span class="unit">%</span>
+      <span class="unit">bpm</span>
     </div>
-    <div>Updated ${data.timestamp}</div>
-    <div>Status: ${data.status}</div>
-    <div>${data.is_stale ? "Данные устарели" : "Данные свежие"}</div>
+    <div class="details">
+      <div>Обновлено: ${ts}</div>
+      <div>Статус: ${data.status || "—"}</div>
+      <div class="${data.is_stale ? "stale" : "fresh"}">
+        ${data.is_stale ? "⚠ Данные устарели" : "✓ Данные свежие"}
+      </div>
+    </div>
   `;
 }
 
 function renderHistory(data) {
-  const ctx = document.getElementById("historyChart").getContext("2d");
-  if (!data) {
-    ctx.canvas.parentElement.innerText = "Ошибка загрузки истории";
+  const canvas = document.getElementById("historyChart");
+  const ctx = canvas.getContext("2d");
+
+  if (!data || !data.data || data.data.length === 0) {
+    if (historyChart) {
+      historyChart.destroy();
+      historyChart = null;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = "16px sans-serif";
+    ctx.fillStyle = "#6b7280";
+    ctx.fillText("Нет данных", 20, 30);
     return;
   }
-  const labels = data.data.map((item) => new Date(item.time).toLocaleString());
+
+  const labels = data.data.map((item) => new Date(item.time).toLocaleTimeString());
   const values = data.data.map((item) => item.level);
-  new Chart(ctx, {
+  const pointColors = values.map(colorFor);
+
+  if (historyChart) {
+    historyChart.data.labels = labels;
+    historyChart.data.datasets[0].data = values;
+    historyChart.data.datasets[0].pointBackgroundColor = pointColors;
+    historyChart.update();
+    return;
+  }
+
+  historyChart = new Chart(ctx, {
     type: "line",
     data: {
       labels,
       datasets: [
         {
-          label: "Body Battery",
+          label: "Heart Rate (BPM)",
           data: values,
           borderColor: "#2563eb",
           backgroundColor: "rgba(37, 99, 235, 0.15)",
+          pointBackgroundColor: pointColors,
+          pointRadius: 3,
           fill: true,
           tension: 0.3,
         },
       ],
     },
     options: {
+      responsive: false,
       scales: {
-        y: { min: 0, max: 100 },
+        y: { min: 30, max: 200, title: { display: true, text: "BPM" } },
+        x: { ticks: { maxTicksLimit: 12 } },
+      },
+      plugins: {
+        legend: { display: true },
       },
     },
   });
@@ -65,3 +134,4 @@ async function load() {
 }
 
 load();
+setInterval(load, POLL_INTERVAL_MS);

@@ -62,15 +62,17 @@ class NodeGarminClient:
             raise RuntimeError(f"Node helper exited with code {result.returncode}")
 
         try:
-            raw = json.loads(result.stdout or "[]")
+            raw = json.loads(result.stdout or "{}")
         except json.JSONDecodeError as exc:
             logger.error("Failed to parse node helper output: %s", exc)
             raise
 
+        profile_name = raw.get("profile_name")
+        items = raw.get("entries", [])
         entries: list[dict] = []
-        for item in raw:
+        for item in items:
             measured_at = datetime.fromisoformat(item["measured_at"].replace("Z", "+00:00"))
             entries.append({"measured_at": measured_at, "level": int(item["level"])})
 
         logger.info("NodeGarminClient: got %d heart rate points", len(entries))
-        return entries
+        return {"profile_name": profile_name, "entries": entries}

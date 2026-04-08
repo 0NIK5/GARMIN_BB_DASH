@@ -48,16 +48,20 @@ async function main() {
 
   const client = new GarminConnect({ username, password });
 
-  // Попытка загрузить сохранённые токены. Если не удалось — полноценный login.
+  // Попытка загрузить сохранённые токены. Если не удалось или токены для другого
+  // пользователя — делаем полноценный login.
   let usedTokens = false;
   try {
     client.loadTokenByFile(TOKEN_DIR);
-    // Проверяем валидность токенов лёгким запросом
-    await client.getUserProfile();
+    const profile = await client.getUserProfile();
+    const tokenUsername = (profile.userName || profile.userDisplayName || profile.displayName || '').toLowerCase();
+    if (!tokenUsername || tokenUsername !== username.toLowerCase()) {
+      throw new Error('Token user mismatch');
+    }
     usedTokens = true;
-    log('Logged in via saved tokens');
+    log('Logged in via saved tokens for', tokenUsername);
   } catch (e) {
-    log('Saved tokens unavailable, performing full login');
+    log('Saved tokens unavailable or invalid, performing full login:', e?.message || e);
     try {
       await client.login(username, password);
       client.exportTokenToFile(TOKEN_DIR);
@@ -66,6 +70,16 @@ async function main() {
       console.error('LOGIN_FAILED:', loginErr?.message || loginErr);
       process.exit(3);
     }
+  }
+
+  let profileName = null;
+  try {
+    const profile = await client.getUserProfile();
+    log('Raw profile object:', JSON.stringify(profile, null, 2));
+    profileName = profile.fullName || profile.displayName || profile.userDisplayName || `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || null;
+    log('Extracted profile_name:', profileName);
+  } catch (e) {
+    log('Failed to fetch profile name:', e?.message || e);
   }
 
   // Собираем heart rate за каждый день в диапазоне [start..end]
@@ -101,7 +115,7 @@ async function main() {
   }
 
   log(`Fetched ${entries.length} heart rate points (usedTokens=${usedTokens})`);
-  process.stdout.write(JSON.stringify(entries));
+  process.stdout.write(JSON.stringify({ profile_name: profileName, entries }));
 }
 
 main().catch((err) => {

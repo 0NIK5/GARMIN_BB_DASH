@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Абсолютный путь к data/ в корне проекта (GARMIN_BB_DASH/data/body_battery.db)
@@ -12,6 +12,15 @@ DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+def ensure_profile_name_column(engine):
+    inspector = inspect(engine)
+    if inspector.has_table("body_battery_logs"):
+        columns = [column_info["name"] for column_info in inspector.get_columns("body_battery_logs")]
+        if "profile_name" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE body_battery_logs ADD COLUMN profile_name TEXT"))
 
 
 def get_db():

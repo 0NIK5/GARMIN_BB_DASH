@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
-from sqlalchemy import Column, DateTime, Integer, SmallInteger, create_engine, select
+from sqlalchemy import Column, DateTime, Integer, SmallInteger, String, create_engine, inspect, select, text
 from sqlalchemy.orm import Session, declarative_base
 
 from .garmin_client import NodeGarminClient
@@ -37,12 +37,21 @@ def load_credentials():
 Base = declarative_base()
 
 
+def ensure_profile_name_column(engine):
+    inspector = inspect(engine)
+    columns = [column_info["name"] for column_info in inspector.get_columns("body_battery_logs")] if inspector.has_table("body_battery_logs") else []
+    if "profile_name" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE body_battery_logs ADD COLUMN profile_name TEXT"))
+
+
 class BodyBatteryLog(Base):
     __tablename__ = "body_battery_logs"
     id = Column(Integer, primary_key=True, index=True)
     measured_at = Column(DateTime(timezone=True), unique=True, index=True, nullable=False)
     level = Column(SmallInteger, nullable=False)
     fetched_at = Column(DateTime(timezone=True), nullable=False)
+    profile_name = Column(String, nullable=True)
 
 
 def get_engine():
@@ -61,7 +70,7 @@ def get_last_timestamp(db: Session):
     return record.measured_at if record else None
 
 
-def upsert_entries(db: Session, entries) -> int:
+def upsert_entries(db: Session, entries, profile_name=None) -> int:
     inserted = 0
     now = datetime.now(timezone.utc)
     for item in entries:
@@ -73,9 +82,12 @@ def upsert_entries(db: Session, entries) -> int:
                     measured_at=item["measured_at"],
                     level=item["level"],
                     fetched_at=now,
+                    profile_name=profile_name,
                 )
             )
             inserted += 1
+        elif profile_name and existing.profile_name != profile_name:
+            existing.profile_name = profile_name
     db.commit()
     return inserted
 
@@ -85,7 +97,11 @@ def run_job():
 
     creds = load_credentials()
     if not creds:
-        logger.error("No credentials found. Please login via the web interface.")
+        logger.warning("No credentials found. Please login via the web interface.")
+        return
+
+    if not creds.get("username") or not creds.get("password"):
+        logger.warning("Invalid credentials: username and password must be provided.")
         return
 
     username = creds["username"]
@@ -98,6 +114,7 @@ def run_job():
 
         engine = get_engine()
         Base.metadata.create_all(bind=engine)
+        ensure_profile_name_column(engine)
 
         with Session(engine) as db:
             last_ts = get_last_timestamp(db)
@@ -111,8 +128,10 @@ def run_job():
                 start = now - timedelta(hours=LOOKBACK_HOURS_INITIAL)
 
             logger.info("Fetching range: %s → %s", start.isoformat(), now.isoformat())
-            entries = client.get_heart_rate(start, now)
-            inserted = upsert_entries(db, entries)
+            payload = client.get_heart_rate(start, now)
+            profile_name = payload.get("profile_name")
+            entries = payload.get("entries", [])
+            inserted = upsert_entries(db, entries, profile_name=profile_name)
             logger.info("Job completed: fetched=%d, inserted=%d", len(entries), inserted)
     except Exception as exc:
         logger.exception("Job failed: %s", exc)
@@ -121,8 +140,13 @@ def run_job():
 def main():
     logger.info("Worker starting. Poll interval: %d minutes", POLL_MINUTES)
 
-    # Запускаем сразу один раз при старте
-    run_job()
+    # Запускаем сразу один раз при старте (если есть кредентайлы)
+    creds = load_credentials()
+    if not creds:
+        logger.warning("No credentials found on startup. Waiting for user to login via web interface.")
+    else:
+        logger.info(f"Found credentials for user '{creds.get('username')}'. Starting initial job run.")
+        run_job()
 
     scheduler = BlockingScheduler(timezone="UTC")
     scheduler.add_job(run_job, "interval", minutes=POLL_MINUTES, id="fetch_heart_rate")

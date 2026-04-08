@@ -17,14 +17,21 @@ function renderUsername(config) {
   const loginForm = document.getElementById("login-form");
   const userInfo = document.getElementById("user-info");
   const usernameDisplay = document.getElementById("username-display");
+  const getNowBtn = document.getElementById("get-now-btn");
 
-  if (!config || config.username === "Not logged in") {
+  const isLoggedIn = config && config.username !== "Not logged in";
+
+  if (!isLoggedIn) {
     loginForm.style.display = "block";
     userInfo.style.display = "none";
+    getNowBtn.disabled = true;
+    getNowBtn.title = "Please login first";
   } else {
     loginForm.style.display = "none";
     userInfo.style.display = "block";
     usernameDisplay.textContent = config.username;
+    getNowBtn.disabled = false;
+    getNowBtn.title = "";
   }
 }
 
@@ -73,12 +80,15 @@ async function fetchHistory() {
 
 function renderCurrent(data) {
   const container = document.getElementById("current-status");
+  const profileNameContainer = document.getElementById("profile-name");
   if (!data) {
+    profileNameContainer.textContent = "Profile: —";
     container.innerHTML = `<div class="error">Ошибка загрузки данных</div>`;
     return;
   }
   const zone = zoneFor(data.level);
   const ts = data.timestamp ? new Date(data.timestamp).toLocaleString() : "—";
+  profileNameContainer.textContent = `Profile: ${data.profile_name || "—"}`;
   container.innerHTML = `
     <div class="metric ${zone}">
       <span class="value">${data.level}</span>
@@ -169,6 +179,9 @@ async function login() {
     const result = await response.json();
     if (result.success) {
       alert("Logged in successfully");
+      // Очищаем input fields
+      document.getElementById("username").value = "";
+      document.getElementById("password").value = "";
       load(); // reload to update UI
     } else {
       alert("Login failed: " + result.message);
@@ -185,6 +198,9 @@ async function logout() {
     const result = await response.json();
     if (result.success) {
       alert("Logged out successfully");
+      // Очищаем input fields
+      document.getElementById("username").value = "";
+      document.getElementById("password").value = "";
       load(); // reload to update UI
     } else {
       alert("Logout failed: " + result.message);
@@ -197,6 +213,14 @@ async function logout() {
 
 async function getNow() {
   const btn = document.getElementById("get-now-btn");
+
+  // Дополнительная проверка: убедиться, что пользователь залогинен
+  const config = await fetchConfig();
+  if (!config || config.username === "Not logged in") {
+    alert("Please login first before refreshing data");
+    return;
+  }
+
   const originalText = btn.textContent;
   btn.textContent = "Updating...";
   btn.disabled = true;
@@ -204,6 +228,13 @@ async function getNow() {
   try {
     const response = await fetch(`${API_BASE}/refresh`, { method: "POST" });
     const result = await response.json();
+
+    if (response.status === 401) {
+      alert("Login session expired. Please login again.");
+      await load(); // reload to update UI
+      return;
+    }
+
     if (!response.ok || !result.success) {
       throw new Error(result.detail || result.message || "Refresh failed");
     }

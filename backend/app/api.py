@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .crud import get_latest_log, get_history
 from .schemas import BatteryCurrent, BatteryHistory, ConfigResponse, LoginResponse, LogoutResponse
+
+logger = logging.getLogger(__name__)
 
 # Allow importing the worker package from the repository root
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -81,6 +84,7 @@ def get_current(db: Session = Depends(get_db)):
         "status": status,
         "minutes_since_update": minutes_since_update,
         "is_stale": is_stale,
+        "profile_name": getattr(current, "profile_name", None),
     })
 
 
@@ -118,6 +122,7 @@ async def login(request: Request):
     if not username or not password:
         raise HTTPException(status_code=400, detail="username and password are required")
     save_credentials(username, password)
+    logger.info(f"User '{username}' logged in successfully. Credentials saved to file.")
     return {"success": True, "message": "Logged in successfully"}
 
 
@@ -125,19 +130,29 @@ async def login(request: Request):
 def logout():
     """Logout and clear credentials"""
     delete_credentials()
+    logger.info("User logged out. Credentials cleared.")
     return {"success": True, "message": "Logged out successfully"}
 
 
 @router.post("/refresh")
 def refresh_data():
     """Run an immediate heart rate refresh and return when it completes."""
+    # Проверяем, что кредентайлы сохранены перед запуском refresh
+    creds = load_credentials()
+    if not creds:
+        logger.warning("Refresh requested but no credentials found")
+        raise HTTPException(status_code=401, detail="Not logged in. Please login first.")
+
     try:
+        logger.info(f"Starting immediate refresh for user '{creds.get('username')}'")
         run_job = _get_run_job()
         run_job()
+        logger.info("Refresh completed successfully")
         return {"success": True, "message": "Refresh completed"}
     except HTTPException:
         raise
     except Exception as exc:
+        logger.error(f"Refresh failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

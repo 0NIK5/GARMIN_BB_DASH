@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
 
@@ -16,6 +16,7 @@ class BatteryCurrent(BaseModel):
     status: str
     minutes_since_update: int
     is_stale: bool
+    profile_name: Optional[str] = None
 
 
 class BatteryHistory(BaseModel):

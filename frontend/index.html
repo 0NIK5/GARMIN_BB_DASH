@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Garmin Recovery Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <main class="container">
+    <h1>Garmin Recovery Dashboard</h1>
+    <section class="card">
+      <div class="current-block">
+        <h2>Current Body Battery</h2>
+        <div id="current-status">Загрузка...</div>
+      </div>
+    </section>
+    <section class="card">
+      <h2>History (24h)</h2>
+      <canvas id="historyChart" width="800" height="400"></canvas>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

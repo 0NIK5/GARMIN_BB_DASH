@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///./data/body_battery.db
+
+  worker:
+    build:
+      context: ./worker
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/data:/app/data
+      - ./worker/session.json:/app/session.json
+    environment:
+      - DATABASE_URL=sqlite:///./data/body_battery.db
+      - GARMIN_USERNAME=example@example.com
+      - GARMIN_PASSWORD=secret

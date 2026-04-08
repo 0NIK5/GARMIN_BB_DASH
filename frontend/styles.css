@@ -1,0 +1,45 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  background: #f3f4f6;
+  color: #111827;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.card {
+  background: #ffffff;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+.current-block {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.metric {
+  font-size: 3rem;
+  font-weight: 700;
+}
+
+.unit {
+  font-size: 1.5rem;
+  margin-left: 0.25rem;
+}

@@ -2,18 +2,13 @@ import logging
 import os
 import signal
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy import Column, DateTime, Integer, SmallInteger, create_engine, select
 from sqlalchemy.orm import Session, declarative_base
 
-from garmin_client import GarminClient, MockGarminClient, NodeGarminClient
-from garminconnect import (
-    GarminConnectAuthenticationError,
-    GarminConnectConnectionError,
-)
+from garmin_client import NodeGarminClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,10 +22,6 @@ _DEFAULT_DB_PATH = os.path.join(_PROJECT_ROOT, "data", "body_battery.db")
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 POLL_MINUTES = int(os.getenv("POLL_MINUTES", "5"))  # для отладки heart rate — каждые 5 минут
 LOOKBACK_HOURS_INITIAL = int(os.getenv("LOOKBACK_HOURS_INITIAL", "6"))
-USE_MOCK = os.getenv("USE_MOCK", "0") == "1"
-# Какой клиент использовать: "node" (через Node.js helper, обходит Cloudflare),
-# "python" (прямой garminconnect — сейчас блокируется CF), "mock"
-GARMIN_CLIENT = os.getenv("GARMIN_CLIENT", "mock" if USE_MOCK else "node").lower()
 
 Base = declarative_base()
 
@@ -78,58 +69,16 @@ def upsert_entries(db: Session, entries) -> int:
     return inserted
 
 
-def fetch_with_retry(client: GarminClient, start: datetime, end: datetime):
-    """
-    Retry logic согласно спецификации:
-      - 3 попытки с exponential backoff (5s, 15s, 30s) для network errors
-      - 1 retry при 401/403 (с повторным логином)
-    """
-    backoffs = [5, 15, 30]
-    auth_retry_used = False
-
-    for attempt in range(len(backoffs) + 1):
-        try:
-            return client.get_heart_rate(start, end)
-        except GarminConnectAuthenticationError as exc:
-            if auth_retry_used:
-                logger.error("Auth retry already used — giving up: %s", exc)
-                raise
-            auth_retry_used = True
-            logger.warning("Auth error, attempting re-login: %s", exc)
-            client.login()
-        except (GarminConnectConnectionError, ConnectionError, TimeoutError) as exc:
-            if attempt >= len(backoffs):
-                logger.error("All retries exhausted: %s", exc)
-                raise
-            wait = backoffs[attempt]
-            logger.warning("Network error (attempt %d), retrying in %ds: %s", attempt + 1, wait, exc)
-            time.sleep(wait)
-
-    raise RuntimeError("Unreachable")
-
-
 def run_job():
-    logger.info("=== Job started (client=%s) ===", GARMIN_CLIENT)
+    logger.info("=== Job started (using Node.js helper) ===")
 
-    if GARMIN_CLIENT == "mock":
-        client = MockGarminClient()
-    elif GARMIN_CLIENT == "node":
-        username = os.getenv("GARMIN_USERNAME", "")
-        password = os.getenv("GARMIN_PASSWORD", "")
-        if not username or not password:
-            logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы")
-            return
-        client = NodeGarminClient(username=username, password=password)
-    elif GARMIN_CLIENT == "python":
-        username = os.getenv("GARMIN_USERNAME", "")
-        password = os.getenv("GARMIN_PASSWORD", "")
-        if not username or not password:
-            logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы")
-            return
-        client = GarminClient(username=username, password=password)
-    else:
-        logger.error("Unknown GARMIN_CLIENT: %s", GARMIN_CLIENT)
+    username = os.getenv("GARMIN_USERNAME", "")
+    password = os.getenv("GARMIN_PASSWORD", "")
+    if not username or not password:
+        logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы")
         return
+
+    client = NodeGarminClient(username=username, password=password)
 
     try:
         client.login()
@@ -149,7 +98,7 @@ def run_job():
                 start = now - timedelta(hours=LOOKBACK_HOURS_INITIAL)
 
             logger.info("Fetching range: %s → %s", start.isoformat(), now.isoformat())
-            entries = fetch_with_retry(client, start, now)
+            entries = client.get_heart_rate(start, now)
             inserted = upsert_entries(db, entries)
             logger.info("Job completed: fetched=%d, inserted=%d", len(entries), inserted)
     except Exception as exc:

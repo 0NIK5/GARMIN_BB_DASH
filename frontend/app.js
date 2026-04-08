@@ -14,12 +14,18 @@ async function fetchConfig() {
 }
 
 function renderUsername(config) {
-  const container = document.getElementById("username-display");
-  if (!config) {
-    container.textContent = "—";
-    return;
+  const loginForm = document.getElementById("login-form");
+  const userInfo = document.getElementById("user-info");
+  const usernameDisplay = document.getElementById("username-display");
+
+  if (!config || config.username === "Not logged in") {
+    loginForm.style.display = "block";
+    userInfo.style.display = "none";
+  } else {
+    loginForm.style.display = "none";
+    userInfo.style.display = "block";
+    usernameDisplay.textContent = config.username;
   }
-  container.textContent = config.username || "Unknown User";
 }
 
 /**
@@ -146,6 +152,49 @@ function renderHistory(data) {
   });
 }
 
+async function login() {
+  const username = document.getElementById("username").value;
+  const password = document.getElementById("password").value;
+  if (!username || !password) {
+    alert("Please enter username and password");
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const result = await response.json();
+    if (result.success) {
+      alert("Logged in successfully");
+      load(); // reload to update UI
+    } else {
+      alert("Login failed: " + result.message);
+    }
+  } catch (err) {
+    console.error("Login error:", err);
+    alert("Login error");
+  }
+}
+
+async function logout() {
+  try {
+    const response = await fetch(`${API_BASE}/logout`, { method: "POST" });
+    const result = await response.json();
+    if (result.success) {
+      alert("Logged out successfully");
+      load(); // reload to update UI
+    } else {
+      alert("Logout failed: " + result.message);
+    }
+  } catch (err) {
+    console.error("Logout error:", err);
+    alert("Logout error");
+  }
+}
+
 async function load() {
   const [current, history, config] = await Promise.all([fetchCurrent(), fetchHistory(), fetchConfig()]);
   renderCurrent(current);
@@ -155,3 +204,7 @@ async function load() {
 
 load();
 setInterval(load, POLL_INTERVAL_MS);
+
+// Event listeners
+document.getElementById("login-btn").addEventListener("click", login);
+document.getElementById("logout-btn").addEventListener("click", logout);

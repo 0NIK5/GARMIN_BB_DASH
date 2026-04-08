@@ -2,6 +2,7 @@ import logging
 import os
 import signal
 import sys
+import json
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -22,6 +23,16 @@ _DEFAULT_DB_PATH = os.path.join(_PROJECT_ROOT, "data", "body_battery.db")
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 POLL_MINUTES = int(os.getenv("POLL_MINUTES", "5"))  # для отладки heart rate — каждые 5 минут
 LOOKBACK_HOURS_INITIAL = int(os.getenv("LOOKBACK_HOURS_INITIAL", "6"))
+CREDENTIALS_FILE = os.path.join(_PROJECT_ROOT, "backend", "data", "credentials.json")
+
+
+def load_credentials():
+    if os.path.exists(CREDENTIALS_FILE):
+        with open(CREDENTIALS_FILE, "r") as f:
+            return json.load(f)
+    return None
+
+
 
 Base = declarative_base()
 
@@ -72,11 +83,13 @@ def upsert_entries(db: Session, entries) -> int:
 def run_job():
     logger.info("=== Job started (using Node.js helper) ===")
 
-    username = os.getenv("GARMIN_USERNAME", "")
-    password = os.getenv("GARMIN_PASSWORD", "")
-    if not username or not password:
-        logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы")
+    creds = load_credentials()
+    if not creds:
+        logger.error("No credentials found. Please login via the web interface.")
         return
+
+    username = creds["username"]
+    password = creds["password"]
 
     client = NodeGarminClient(username=username, password=password)
 

@@ -10,7 +10,17 @@
 <body>
   <header class="header">
     <h1>Garmin Heart Rate Dashboard</h1>
-    <div class="username" id="username-display">—</div>
+    <div id="auth-section">
+      <div id="login-form" style="display: none;">
+        <input type="text" id="username" placeholder="Username" />
+        <input type="password" id="password" placeholder="Password" />
+        <button id="login-btn">Login</button>
+      </div>
+      <div id="user-info" style="display: none;">
+        <span id="username-display">—</span>
+        <button id="logout-btn">Logout</button>
+      </div>
+    </div>
   </header>
   <main class="container">
     <section class="card">

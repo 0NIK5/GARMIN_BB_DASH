@@ -11,12 +11,14 @@ ENV/
 *.sqlite3
 *.db
 session.json
+credentials.json
 
 # VS Code
 .vscode/
 
 # Mac
 .DS_Store
+
 
 # Claude Code
 .claude/

@@ -21,3 +21,23 @@ class BatteryCurrent(BaseModel):
 class BatteryHistory(BaseModel):
     period_hours: int
     data: List[BatteryPoint]
+
+
+class ConfigResponse(BaseModel):
+    username: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    success: bool
+    message: str
+
+
+class LogoutResponse(BaseModel):
+    success: bool
+    message: str
+

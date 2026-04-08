@@ -1,15 +1,43 @@
 import os
+import json
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from .database import get_db
 from .crud import get_latest_log, get_history
-from .schemas import BatteryCurrent, BatteryHistory
+from .schemas import BatteryCurrent, BatteryHistory, ConfigResponse, LoginRequest, LoginResponse, LogoutResponse
 
 router = APIRouter(prefix="/api/v1")
 
 # Порог устаревания данных (heart rate опрашивается каждые 5 минут)
 STALE_THRESHOLD_MINUTES = 15
+
+CREDENTIALS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "credentials.json")
+
+
+def load_credentials():
+    if os.path.exists(CREDENTIALS_FILE):
+        with open(CREDENTIALS_FILE, "r") as f:
+            return json.load(f)
+    return None
+
+
+def save_credentials(username, password):
+    os.makedirs(os.path.dirname(CREDENTIALS_FILE), exist_ok=True)
+    with open(CREDENTIALS_FILE, "w") as f:
+        json.dump({"username": username, "password": password}, f)
+
+
+def delete_credentials():
+    if os.path.exists(CREDENTIALS_FILE):
+        os.remove(CREDENTIALS_FILE)
+
+
+router = APIRouter(prefix="/api/v1")
+
+# Порог устаревания данных (heart rate опрашивается каждые 5 минут)
+STALE_THRESHOLD_MINUTES = 15
+
 
 
 def compute_status(records):
@@ -59,10 +87,25 @@ def get_history_endpoint(hours: int = Query(24, ge=1, le=168), db: Session = Dep
     }
 
 
-@router.get("/config")
+@router.get("/config", response_model=ConfigResponse)
 def get_config():
     """Return application configuration including username"""
-    username = os.getenv("GARMIN_USERNAME", "Unknown User")
-    return {
-        "username": username,
-    }
+    creds = load_credentials()
+    username = creds["username"] if creds else "Not logged in"
+    return {"username": username}
+
+
+@router.post("/login", response_model=LoginResponse)
+def login(request: LoginRequest):
+    """Login with Garmin credentials"""
+    save_credentials(request.username, request.password)
+    return {"success": True, "message": "Logged in successfully"}
+
+
+@router.post("/logout", response_model=LogoutResponse)
+def logout():
+    """Logout and clear credentials"""
+    delete_credentials()
+    return {"success": True, "message": "Logged out successfully"}
+
+

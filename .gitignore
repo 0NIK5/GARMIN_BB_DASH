@@ -24,7 +24,11 @@ session.json
 # Garmin session tokens (secrets!)
 .garmin_tokens/
 worker/.garmin_tokens/
+worker_node/tokens/
 
 # Data directory (runtime DB)
 data/
+
+# Node.js
+node_modules/
 

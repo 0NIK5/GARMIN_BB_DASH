@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -6,6 +6,9 @@ from .crud import get_latest_log, get_history
 from .schemas import BatteryCurrent, BatteryHistory
 
 router = APIRouter(prefix="/api/v1")
+
+# Порог устаревания данных (heart rate опрашивается каждые 5 минут)
+STALE_THRESHOLD_MINUTES = 15
 
 
 def compute_status(records):
@@ -15,22 +18,27 @@ def compute_status(records):
     last_three = records[-3:]
     levels = [record.level for record in last_three]
     if levels[-1] < levels[0]:
-        return "draining"
+        return "decreasing"
     if levels[-1] > levels[0]:
-        return "recharging"
+        return "increasing"
     return "stable"
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
 
 @router.get("/battery/current", response_model=BatteryCurrent)
 def get_current(db: Session = Depends(get_db)):
     current = get_latest_log(db)
     if current is None:
-        raise HTTPException(status_code=404, detail="No battery data available")
+        raise HTTPException(status_code=404, detail="No heart rate data available")
 
     history = get_history(db, hours=3)
     status = compute_status(history)
-    minutes_since_update = int((datetime.utcnow() - current.measured_at.replace(tzinfo=None)).total_seconds() // 60)
-    is_stale = minutes_since_update > 90
+    measured_at_utc = _ensure_utc(current.measured_at)
+    minutes_since_update = int((datetime.now(timezone.utc) - measured_at_utc).total_seconds() // 60)
+    is_stale = minutes_since_update > STALE_THRESHOLD_MINUTES
 
     return {
         "timestamp": current.measured_at,

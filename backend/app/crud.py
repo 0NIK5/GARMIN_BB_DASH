@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -11,7 +11,7 @@ def get_latest_log(db: Session):
 
 
 def get_history(db: Session, hours: int):
-    threshold = datetime.utcnow() - timedelta(hours=hours)
+    threshold = datetime.now(timezone.utc) - timedelta(hours=hours)
     stmt = select(BodyBatteryLog).where(BodyBatteryLog.measured_at >= threshold).order_by(BodyBatteryLog.measured_at.asc())
     return db.scalars(stmt).all()
 

@@ -17,3 +17,14 @@ session.json
 
 # Mac
 .DS_Store
+
+# Claude Code
+.claude/
+
+# Garmin session tokens (secrets!)
+.garmin_tokens/
+worker/.garmin_tokens/
+
+# Data directory (runtime DB)
+data/
+

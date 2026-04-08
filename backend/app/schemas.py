@@ -7,8 +7,7 @@ class BatteryPoint(BaseModel):
     time: datetime
     level: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
 
 
 class BatteryCurrent(BaseModel):

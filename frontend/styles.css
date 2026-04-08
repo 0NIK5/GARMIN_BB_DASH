@@ -37,9 +37,31 @@ h1 {
 .metric {
   font-size: 3rem;
   font-weight: 700;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.75rem;
+  color: #fff;
+  display: inline-flex;
+  align-items: baseline;
 }
+
+.metric.zone-green { background: #16a34a; }
+.metric.zone-yellow { background: #eab308; color: #111827; }
+.metric.zone-red { background: #dc2626; }
+.metric.zone-unknown { background: #6b7280; }
 
 .unit {
   font-size: 1.5rem;
   margin-left: 0.25rem;
 }
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.stale { color: #dc2626; font-weight: 600; }
+.fresh { color: #16a34a; font-weight: 600; }
+.error { color: #dc2626; }

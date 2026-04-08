@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8002/api/v1";
+const API_BASE = "http://localhost:8000/api/v1";
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 минут
 
 let historyChart = null;

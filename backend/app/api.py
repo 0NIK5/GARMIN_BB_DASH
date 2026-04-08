@@ -1,11 +1,12 @@
 import os
 import json
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from .database import get_db
 from .crud import get_latest_log, get_history
-from .schemas import BatteryCurrent, BatteryHistory, ConfigResponse, LoginRequest, LoginResponse, LogoutResponse
+from .schemas import BatteryCurrent, BatteryHistory, ConfigResponse, LoginResponse, LogoutResponse
 
 router = APIRouter(prefix="/api/v1")
 
@@ -33,12 +34,6 @@ def delete_credentials():
         os.remove(CREDENTIALS_FILE)
 
 
-router = APIRouter(prefix="/api/v1")
-
-# Порог устаревания данных (heart rate опрашивается каждые 5 минут)
-STALE_THRESHOLD_MINUTES = 15
-
-
 
 def compute_status(records):
     if len(records) < 2:
@@ -57,7 +52,7 @@ def _ensure_utc(dt: datetime) -> datetime:
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
 
-@router.get("/battery/current", response_model=BatteryCurrent)
+@router.get("/battery/current")
 def get_current(db: Session = Depends(get_db)):
     current = get_latest_log(db)
     if current is None:
@@ -69,25 +64,33 @@ def get_current(db: Session = Depends(get_db)):
     minutes_since_update = int((datetime.now(timezone.utc) - measured_at_utc).total_seconds() // 60)
     is_stale = minutes_since_update > STALE_THRESHOLD_MINUTES
 
-    return {
+    return jsonable_encoder({
         "timestamp": current.measured_at,
         "level": current.level,
         "status": status,
         "minutes_since_update": minutes_since_update,
         "is_stale": is_stale,
-    }
+    })
 
 
-@router.get("/battery/history", response_model=BatteryHistory)
-def get_history_endpoint(hours: int = Query(24, ge=1, le=168), db: Session = Depends(get_db)):
+@router.get("/battery/history")
+def get_history_endpoint(request: Request, db: Session = Depends(get_db)):
+    hours_param = request.query_params.get("hours", "24")
+    try:
+        hours = int(hours_param)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="hours must be an integer")
+    if hours < 1 or hours > 168:
+        raise HTTPException(status_code=400, detail="hours must be between 1 and 168")
+
     rows = get_history(db, hours)
-    return {
+    return jsonable_encoder({
         "period_hours": hours,
         "data": [{"time": row.measured_at, "level": row.level} for row in rows],
-    }
+    })
 
 
-@router.get("/config", response_model=ConfigResponse)
+@router.get("/config")
 def get_config():
     """Return application configuration including username"""
     creds = load_credentials()
@@ -95,14 +98,19 @@ def get_config():
     return {"username": username}
 
 
-@router.post("/login", response_model=LoginResponse)
-def login(request: LoginRequest):
+@router.post("/login")
+async def login(request: Request):
     """Login with Garmin credentials"""
-    save_credentials(request.username, request.password)
+    payload = await request.json()
+    username = payload.get("username")
+    password = payload.get("password")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="username and password are required")
+    save_credentials(username, password)
     return {"success": True, "message": "Logged in successfully"}
 
 
-@router.post("/logout", response_model=LogoutResponse)
+@router.post("/logout")
 def logout():
     """Logout and clear credentials"""
     delete_credentials()

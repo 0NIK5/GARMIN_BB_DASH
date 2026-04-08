@@ -195,6 +195,20 @@ async function logout() {
   }
 }
 
+async function getNow() {
+  const btn = document.getElementById("get-now-btn");
+  const originalText = btn.textContent;
+  btn.textContent = "Updating...";
+  btn.disabled = true;
+  
+  try {
+    await load();
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
 async function load() {
   const [current, history, config] = await Promise.all([fetchCurrent(), fetchHistory(), fetchConfig()]);
   renderCurrent(current);
@@ -208,3 +222,4 @@ setInterval(load, POLL_INTERVAL_MS);
 // Event listeners
 document.getElementById("login-btn").addEventListener("click", login);
 document.getElementById("logout-btn").addEventListener("click", logout);
+document.getElementById("get-now-btn").addEventListener("click", getNow);

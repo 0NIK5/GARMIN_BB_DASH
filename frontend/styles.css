@@ -56,6 +56,27 @@ h1 {
   align-items: center;
 }
 
+#get-now-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#get-now-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+#get-now-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
 .metric {
   font-size: 3rem;
   font-weight: 700;

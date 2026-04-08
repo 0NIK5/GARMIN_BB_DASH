@@ -200,9 +200,17 @@ async function getNow() {
   const originalText = btn.textContent;
   btn.textContent = "Updating...";
   btn.disabled = true;
-  
+
   try {
+    const response = await fetch(`${API_BASE}/refresh`, { method: "POST" });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.detail || result.message || "Refresh failed");
+    }
     await load();
+  } catch (err) {
+    console.error("GetNow error:", err);
+    alert("Get Now failed: " + err.message);
   } finally {
     btn.textContent = originalText;
     btn.disabled = false;

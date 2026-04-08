@@ -9,7 +9,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy import Column, DateTime, Integer, SmallInteger, create_engine, select
 from sqlalchemy.orm import Session, declarative_base
 
-from garmin_client import NodeGarminClient
+from .garmin_client import NodeGarminClient
 
 logging.basicConfig(
     level=logging.INFO,

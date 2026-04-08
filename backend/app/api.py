@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
@@ -7,6 +8,16 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .crud import get_latest_log, get_history
 from .schemas import BatteryCurrent, BatteryHistory, ConfigResponse, LoginResponse, LogoutResponse
+
+# Allow importing the worker package from the repository root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+def _get_run_job():
+    try:
+        from worker.worker import run_job
+        return run_job
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to import refresh worker: {exc}")
 
 router = APIRouter(prefix="/api/v1")
 
@@ -115,5 +126,18 @@ def logout():
     """Logout and clear credentials"""
     delete_credentials()
     return {"success": True, "message": "Logged out successfully"}
+
+
+@router.post("/refresh")
+def refresh_data():
+    """Run an immediate heart rate refresh and return when it completes."""
+    try:
+        run_job = _get_run_job()
+        run_job()
+        return {"success": True, "message": "Refresh completed"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 

@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -55,4 +56,13 @@ def get_history_endpoint(hours: int = Query(24, ge=1, le=168), db: Session = Dep
     return {
         "period_hours": hours,
         "data": [{"time": row.measured_at, "level": row.level} for row in rows],
+    }
+
+
+@router.get("/config")
+def get_config():
+    """Return application configuration including username"""
+    username = os.getenv("GARMIN_USERNAME", "Unknown User")
+    return {
+        "username": username,
     }

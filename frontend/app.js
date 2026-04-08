@@ -3,6 +3,25 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 минут
 
 let historyChart = null;
 
+async function fetchConfig() {
+  try {
+    const response = await fetch(`${API_BASE}/config`);
+    return response.ok ? await response.json() : null;
+  } catch (err) {
+    console.error("fetchConfig failed:", err);
+    return null;
+  }
+}
+
+function renderUsername(config) {
+  const container = document.getElementById("username-display");
+  if (!config) {
+    container.textContent = "—";
+    return;
+  }
+  container.textContent = config.username || "Unknown User";
+}
+
 /**
  * Цветовая зона по пульсу (BPM):
  *   зелёный: 50-90   (норма покоя)
@@ -128,9 +147,10 @@ function renderHistory(data) {
 }
 
 async function load() {
-  const [current, history] = await Promise.all([fetchCurrent(), fetchHistory()]);
+  const [current, history, config] = await Promise.all([fetchCurrent(), fetchHistory(), fetchConfig()]);
   renderCurrent(current);
   renderHistory(history);
+  renderUsername(config);
 }
 
 load();

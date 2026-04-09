@@ -138,6 +138,6 @@ h1 {
 
 /* Body Battery зоны */
 .bb-high   { background: #16a34a; }   /* 75–100 */
-.bb-medium { background: #eab308; color: #111827; } /* 40–74 */
-.bb-low    { background: #dc2626; }   /* 0–39 */
+.bb-medium { background: #16a34a; color: #111827; } /* 40–74 */
+.bb-low    { background: #eab308; }   /* 0–39 */
 .bb-unknown { background: #6b7280; }

@@ -66,15 +66,15 @@ function colorFor(bpm) {
  */
 function bbZoneFor(val) {
   if (val == null) return "bb-unknown";
-  if (val >= 75) return "bb-high";
-  if (val >= 40) return "bb-medium";
+  if (val >= 25) return "bb-high";
+  if (val >= 20) return "bb-medium";
   return "bb-low";
 }
 
 function bbColorFor(val) {
   return {
     "bb-high":    "#16a34a",
-    "bb-medium":  "#eab308",
+    "bb-medium":  "#16a34a",//"#eab308",
     "bb-low":     "#dc2626",
     "bb-unknown": "#6b7280",
   }[bbZoneFor(val)];

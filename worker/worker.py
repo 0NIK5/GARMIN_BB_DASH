@@ -2,18 +2,14 @@ import logging
 import os
 import signal
 import sys
-import time
+import json
 from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
-from sqlalchemy import Column, DateTime, Integer, SmallInteger, create_engine, select
+from sqlalchemy import Column, DateTime, Integer, SmallInteger, String, create_engine, inspect, select, text
 from sqlalchemy.orm import Session, declarative_base
 
-from garmin_client import GarminClient, MockGarminClient, NodeGarminClient
-from garminconnect import (
-    GarminConnectAuthenticationError,
-    GarminConnectConnectionError,
-)
+from .garmin_client import NodeGarminClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,12 +23,26 @@ _DEFAULT_DB_PATH = os.path.join(_PROJECT_ROOT, "data", "body_battery.db")
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 POLL_MINUTES = int(os.getenv("POLL_MINUTES", "5"))  # для отладки heart rate — каждые 5 минут
 LOOKBACK_HOURS_INITIAL = int(os.getenv("LOOKBACK_HOURS_INITIAL", "6"))
-USE_MOCK = os.getenv("USE_MOCK", "0") == "1"
-# Какой клиент использовать: "node" (через Node.js helper, обходит Cloudflare),
-# "python" (прямой garminconnect — сейчас блокируется CF), "mock"
-GARMIN_CLIENT = os.getenv("GARMIN_CLIENT", "mock" if USE_MOCK else "node").lower()
+CREDENTIALS_FILE = os.path.join(_PROJECT_ROOT, "backend", "data", "credentials.json")
+
+
+def load_credentials():
+    if os.path.exists(CREDENTIALS_FILE):
+        with open(CREDENTIALS_FILE, "r") as f:
+            return json.load(f)
+    return None
+
+
 
 Base = declarative_base()
+
+
+def ensure_profile_name_column(engine):
+    inspector = inspect(engine)
+    columns = [column_info["name"] for column_info in inspector.get_columns("body_battery_logs")] if inspector.has_table("body_battery_logs") else []
+    if "profile_name" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE body_battery_logs ADD COLUMN profile_name TEXT"))
 
 
 class BodyBatteryLog(Base):
@@ -41,6 +51,7 @@ class BodyBatteryLog(Base):
     measured_at = Column(DateTime(timezone=True), unique=True, index=True, nullable=False)
     level = Column(SmallInteger, nullable=False)
     fetched_at = Column(DateTime(timezone=True), nullable=False)
+    profile_name = Column(String, nullable=True)
 
 
 def get_engine():
@@ -59,7 +70,7 @@ def get_last_timestamp(db: Session):
     return record.measured_at if record else None
 
 
-def upsert_entries(db: Session, entries) -> int:
+def upsert_entries(db: Session, entries, profile_name=None) -> int:
     inserted = 0
     now = datetime.now(timezone.utc)
     for item in entries:
@@ -71,71 +82,39 @@ def upsert_entries(db: Session, entries) -> int:
                     measured_at=item["measured_at"],
                     level=item["level"],
                     fetched_at=now,
+                    profile_name=profile_name,
                 )
             )
             inserted += 1
+        elif profile_name and existing.profile_name != profile_name:
+            existing.profile_name = profile_name
     db.commit()
     return inserted
 
 
-def fetch_with_retry(client: GarminClient, start: datetime, end: datetime):
-    """
-    Retry logic согласно спецификации:
-      - 3 попытки с exponential backoff (5s, 15s, 30s) для network errors
-      - 1 retry при 401/403 (с повторным логином)
-    """
-    backoffs = [5, 15, 30]
-    auth_retry_used = False
-
-    for attempt in range(len(backoffs) + 1):
-        try:
-            return client.get_heart_rate(start, end)
-        except GarminConnectAuthenticationError as exc:
-            if auth_retry_used:
-                logger.error("Auth retry already used — giving up: %s", exc)
-                raise
-            auth_retry_used = True
-            logger.warning("Auth error, attempting re-login: %s", exc)
-            client.login()
-        except (GarminConnectConnectionError, ConnectionError, TimeoutError) as exc:
-            if attempt >= len(backoffs):
-                logger.error("All retries exhausted: %s", exc)
-                raise
-            wait = backoffs[attempt]
-            logger.warning("Network error (attempt %d), retrying in %ds: %s", attempt + 1, wait, exc)
-            time.sleep(wait)
-
-    raise RuntimeError("Unreachable")
-
-
 def run_job():
-    logger.info("=== Job started (client=%s) ===", GARMIN_CLIENT)
+    logger.info("=== Job started (using Node.js helper) ===")
 
-    if GARMIN_CLIENT == "mock":
-        client = MockGarminClient()
-    elif GARMIN_CLIENT == "node":
-        username = os.getenv("GARMIN_USERNAME", "")
-        password = os.getenv("GARMIN_PASSWORD", "")
-        if not username or not password:
-            logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы")
-            return
-        client = NodeGarminClient(username=username, password=password)
-    elif GARMIN_CLIENT == "python":
-        username = os.getenv("GARMIN_USERNAME", "")
-        password = os.getenv("GARMIN_PASSWORD", "")
-        if not username or not password:
-            logger.error("GARMIN_USERNAME / GARMIN_PASSWORD не заданы")
-            return
-        client = GarminClient(username=username, password=password)
-    else:
-        logger.error("Unknown GARMIN_CLIENT: %s", GARMIN_CLIENT)
+    creds = load_credentials()
+    if not creds:
+        logger.warning("No credentials found. Please login via the web interface.")
         return
+
+    if not creds.get("username") or not creds.get("password"):
+        logger.warning("Invalid credentials: username and password must be provided.")
+        return
+
+    username = creds["username"]
+    password = creds["password"]
+
+    client = NodeGarminClient(username=username, password=password)
 
     try:
         client.login()
 
         engine = get_engine()
         Base.metadata.create_all(bind=engine)
+        ensure_profile_name_column(engine)
 
         with Session(engine) as db:
             last_ts = get_last_timestamp(db)
@@ -149,18 +128,34 @@ def run_job():
                 start = now - timedelta(hours=LOOKBACK_HOURS_INITIAL)
 
             logger.info("Fetching range: %s → %s", start.isoformat(), now.isoformat())
-            entries = fetch_with_retry(client, start, now)
-            inserted = upsert_entries(db, entries)
+            payload = client.get_heart_rate(start, now)
+            profile_name = payload.get("profile_name")
+            entries = payload.get("entries", [])
+            inserted = upsert_entries(db, entries, profile_name=profile_name)
+            # Update profile_name on the latest record even if no new entries were inserted
+            if profile_name:
+                latest = db.scalars(
+                    select(BodyBatteryLog).order_by(BodyBatteryLog.measured_at.desc()).limit(1)
+                ).first()
+                if latest and latest.profile_name != profile_name:
+                    latest.profile_name = profile_name
+                    db.commit()
             logger.info("Job completed: fetched=%d, inserted=%d", len(entries), inserted)
     except Exception as exc:
         logger.exception("Job failed: %s", exc)
+        raise
 
 
 def main():
     logger.info("Worker starting. Poll interval: %d minutes", POLL_MINUTES)
 
-    # Запускаем сразу один раз при старте
-    run_job()
+    # Запускаем сразу один раз при старте (если есть кредентайлы)
+    creds = load_credentials()
+    if not creds:
+        logger.warning("No credentials found on startup. Waiting for user to login via web interface.")
+    else:
+        logger.info(f"Found credentials for user '{creds.get('username')}'. Starting initial job run.")
+        run_job()
 
     scheduler = BlockingScheduler(timezone="UTC")
     scheduler.add_job(run_job, "interval", minutes=POLL_MINUTES, id="fetch_heart_rate")

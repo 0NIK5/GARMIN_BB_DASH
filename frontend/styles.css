@@ -9,6 +9,28 @@ body {
   min-height: 100vh;
 }
 
+.header {
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.username {
+  font-size: 0.95rem;
+  color: #6b7280;
+  padding: 0.5rem 1rem;
+  background: #f3f4f6;
+  border-radius: 0.5rem;
+}
+
 .container {
   max-width: 960px;
   margin: 0 auto;
@@ -32,6 +54,27 @@ h1 {
   display: flex;
   gap: 1rem;
   align-items: center;
+}
+
+#get-now-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#get-now-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+#get-now-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
 }
 
 .metric {

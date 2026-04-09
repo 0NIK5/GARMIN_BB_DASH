@@ -135,6 +135,7 @@ def run_job():
             logger.info("Job completed: fetched=%d, inserted=%d", len(entries), inserted)
     except Exception as exc:
         logger.exception("Job failed: %s", exc)
+        raise
 
 
 def main():

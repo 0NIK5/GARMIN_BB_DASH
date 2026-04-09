@@ -61,11 +61,16 @@ class NodeGarminClient:
             logger.error("Node helper failed with code %d", result.returncode)
             raise RuntimeError(f"Node helper exited with code {result.returncode}")
 
+        result_file = os.path.join(NODE_HELPER_DIR, "tokens", "_result.json")
         try:
-            raw = json.loads(result.stdout or "{}")
-        except json.JSONDecodeError as exc:
-            logger.error("Failed to parse node helper output: %s", exc)
+            with open(result_file, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as exc:
+            logger.error("Failed to read node helper result file: %s", exc)
             raise
+        finally:
+            if os.path.exists(result_file):
+                os.remove(result_file)
 
         profile_name = raw.get("profile_name")
         items = raw.get("entries", [])

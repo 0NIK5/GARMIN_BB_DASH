@@ -75,7 +75,6 @@ async function main() {
   let profileName = null;
   try {
     const profile = await client.getUserProfile();
-    log('Raw profile object:', JSON.stringify(profile, null, 2));
     profileName = profile.fullName || profile.displayName || profile.userDisplayName || `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || null;
     log('Extracted profile_name:', profileName);
   } catch (e) {
@@ -115,7 +114,10 @@ async function main() {
   }
 
   log(`Fetched ${entries.length} heart rate points (usedTokens=${usedTokens})`);
-  process.stdout.write(JSON.stringify({ profile_name: profileName, entries }));
+  const output = JSON.stringify({ profile_name: profileName, entries });
+  const outputFile = path.join(__dirname, 'tokens', '_result.json');
+  fs.writeFileSync(outputFile, output, 'utf8');
+  log('Result written to', outputFile);
 }
 
 main().catch((err) => {

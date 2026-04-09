@@ -132,6 +132,14 @@ def run_job():
             profile_name = payload.get("profile_name")
             entries = payload.get("entries", [])
             inserted = upsert_entries(db, entries, profile_name=profile_name)
+            # Update profile_name on the latest record even if no new entries were inserted
+            if profile_name:
+                latest = db.scalars(
+                    select(BodyBatteryLog).order_by(BodyBatteryLog.measured_at.desc()).limit(1)
+                ).first()
+                if latest and latest.profile_name != profile_name:
+                    latest.profile_name = profile_name
+                    db.commit()
             logger.info("Job completed: fetched=%d, inserted=%d", len(entries), inserted)
     except Exception as exc:
         logger.exception("Job failed: %s", exc)

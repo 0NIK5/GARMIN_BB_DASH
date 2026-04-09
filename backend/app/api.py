@@ -28,6 +28,7 @@ router = APIRouter(prefix="/api/v1")
 STALE_THRESHOLD_MINUTES = 15
 
 CREDENTIALS_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "credentials.json")
+TOKEN_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "worker_node", "tokens"))
 
 
 def load_credentials():
@@ -37,8 +38,19 @@ def load_credentials():
     return None
 
 
+def clear_saved_tokens():
+    """Remove cached OAuth tokens so the next refresh does a fresh login."""
+    if os.path.isdir(TOKEN_DIR):
+        for fname in os.listdir(TOKEN_DIR):
+            fpath = os.path.join(TOKEN_DIR, fname)
+            if os.path.isfile(fpath):
+                os.remove(fpath)
+                logger.info("Removed stale token file: %s", fname)
+
+
 def save_credentials(username, password):
     os.makedirs(os.path.dirname(CREDENTIALS_FILE), exist_ok=True)
+    clear_saved_tokens()
     with open(CREDENTIALS_FILE, "w") as f:
         json.dump({"username": username, "password": password}, f)
 
@@ -46,6 +58,7 @@ def save_credentials(username, password):
 def delete_credentials():
     if os.path.exists(CREDENTIALS_FILE):
         os.remove(CREDENTIALS_FILE)
+    clear_saved_tokens()
 
 
 

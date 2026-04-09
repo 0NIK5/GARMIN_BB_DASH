@@ -173,43 +173,80 @@ Garmin использует OAuth2 с очень длинным refresh token'о
 - Node.js 18+ (для Garmin helper)
 - Garmin Connect аккаунт
 
+---
+
+## 🚀 БЫСТРЫЙ ЗАПУСК (скопируй в bash)
+
+```bash
+# 1. Backend (порт 8000)
+cd backend && python -m uvicorn app.main:app --reload --port 8000 &
+BACKEND_PID=$!
+
+# 2. Frontend (порт 5500)
+cd ../frontend && python -m http.server 5500 &
+FRONTEND_PID=$!
+
+# 3. Worker (обновляет БД каждые 10 минут)
+cd ../worker && POLL_MINUTES=10 python -m worker.worker &
+WORKER_PID=$!
+
+echo "Backend PID: $BACKEND_PID"
+echo "Frontend PID: $FRONTEND_PID"
+echo "Worker PID: $WORKER_PID"
+echo ""
+echo "Фронтенд: http://127.0.0.1:5500"
+echo "Бэкенд: http://127.0.0.1:8000"
+echo ""
+echo "Чтобы остановить все процессы:"
+echo "kill $BACKEND_PID $FRONTEND_PID $WORKER_PID"
+```
+
+**Перед первым запуском:**
+
+```bash
+# Установить зависимости
+cd backend && pip install -r requirements.txt
+cd ../worker && pip install APScheduler==3.10.2 sqlalchemy==2.0.40 requests==2.31.0 python-dateutil==2.8.2
+cd ../worker_node && npm install
+```
+
+---
+
+## Детальный запуск
+
 ### 1. Backend
 
 ```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-### 2. Worker
+Откроется на **http://127.0.0.1:8000**
+
+### 2. Worker (фоновый scheduler)
 
 ```bash
 cd worker
-pip install -r requirements.txt
+pip install APScheduler==3.10.2 sqlalchemy==2.0.40 requests==2.31.0 python-dateutil==2.8.2
 
-cd ../worker_node
-npm install                # ставит garmin-connect
-cd ../worker
+# Перед первым запуском установить Node.js зависимости
+cd ../worker_node && npm install && cd ../worker
 
-# креды Garmin
-export GARMIN_USERNAME="you@example.com"
-export GARMIN_PASSWORD="your-password"
-export GARMIN_CLIENT=node          # или mock / python
-export POLL_MINUTES=5
-
-python worker.py
+# Запустить worker с интервалом 10 минут
+POLL_MINUTES=10 python -m worker.worker
 ```
 
-При первом запуске будет полный логин (~5–10 секунд), потом токены лягут в `worker_node/tokens/` и следующие запуски будут мгновенными.
+При первом запуске будет полный логин (~5–10 секунд), потом токены лягут в `worker_node/tokens/` и следующие запуски будут мгновенными. **Worker обновляет БД автоматически каждые N минут.**
 
 ### 3. Frontend
 
 ```bash
 cd frontend
-python -m http.server 3000
+python -m http.server 5500
 ```
 
-Открыть http://127.0.0.1:3000.
+Откроется на **http://127.0.0.1:5500**
 
 ### Mock-режим (без интернета)
 

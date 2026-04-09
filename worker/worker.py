@@ -37,12 +37,14 @@ def load_credentials():
 Base = declarative_base()
 
 
-def ensure_profile_name_column(engine):
+def _ensure_column(engine, col_name, col_type_sql):
     inspector = inspect(engine)
-    columns = [column_info["name"] for column_info in inspector.get_columns("body_battery_logs")] if inspector.has_table("body_battery_logs") else []
-    if "profile_name" not in columns:
+    if not inspector.has_table("body_battery_logs"):
+        return
+    columns = [c["name"] for c in inspector.get_columns("body_battery_logs")]
+    if col_name not in columns:
         with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE body_battery_logs ADD COLUMN profile_name TEXT"))
+            conn.execute(text(f"ALTER TABLE body_battery_logs ADD COLUMN {col_name} {col_type_sql}"))
 
 
 class BodyBatteryLog(Base):
@@ -50,6 +52,7 @@ class BodyBatteryLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     measured_at = Column(DateTime(timezone=True), unique=True, index=True, nullable=False)
     level = Column(SmallInteger, nullable=False)
+    battery_level = Column(SmallInteger, nullable=True)
     fetched_at = Column(DateTime(timezone=True), nullable=False)
     profile_name = Column(String, nullable=True)
 
@@ -81,13 +84,18 @@ def upsert_entries(db: Session, entries, profile_name=None) -> int:
                 BodyBatteryLog(
                     measured_at=item["measured_at"],
                     level=item["level"],
+                    battery_level=item.get("battery_level"),
                     fetched_at=now,
                     profile_name=profile_name,
                 )
             )
             inserted += 1
-        elif profile_name and existing.profile_name != profile_name:
-            existing.profile_name = profile_name
+        else:
+            # Обновляем battery_level если появилось новое значение
+            if item.get("battery_level") is not None and existing.battery_level != item["battery_level"]:
+                existing.battery_level = item["battery_level"]
+            if profile_name and existing.profile_name != profile_name:
+                existing.profile_name = profile_name
     db.commit()
     return inserted
 
@@ -114,7 +122,8 @@ def run_job():
 
         engine = get_engine()
         Base.metadata.create_all(bind=engine)
-        ensure_profile_name_column(engine)
+        _ensure_column(engine, "profile_name", "TEXT")
+        _ensure_column(engine, "battery_level", "SMALLINT")
 
         with Session(engine) as db:
             last_ts = get_last_timestamp(db)

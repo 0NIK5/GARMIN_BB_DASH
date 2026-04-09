@@ -58,6 +58,28 @@ function colorFor(bpm) {
   }[zone];
 }
 
+/**
+ * Цветовая зона по Body Battery (%):
+ *   зелёный: 75-100  (высокий)
+ *   жёлтый:  40-74   (средний)
+ *   красный: 0-39    (низкий)
+ */
+function bbZoneFor(val) {
+  if (val == null) return "bb-unknown";
+  if (val >= 75) return "bb-high";
+  if (val >= 40) return "bb-medium";
+  return "bb-low";
+}
+
+function bbColorFor(val) {
+  return {
+    "bb-high":    "#16a34a",
+    "bb-medium":  "#eab308",
+    "bb-low":     "#dc2626",
+    "bb-unknown": "#6b7280",
+  }[bbZoneFor(val)];
+}
+
 async function fetchCurrent() {
   try {
     const response = await fetch(`${API_BASE}/battery/current`);
@@ -79,24 +101,46 @@ async function fetchHistory() {
 }
 
 function renderCurrent(data) {
-  const container = document.getElementById("current-status");
+  const hrContainer = document.getElementById("current-status");
+  const bbContainer = document.getElementById("battery-status");
+  const detailsContainer = document.getElementById("current-details");
   const profileNameContainer = document.getElementById("profile-name");
+
   if (!data) {
     profileNameContainer.textContent = "Profile: —";
-    container.innerHTML = `<div class="error">Ошибка загрузки данных</div>`;
+    hrContainer.innerHTML = `<div class="error">Ошибка загрузки</div>`;
+    bbContainer.innerHTML = `<div class="error">—</div>`;
+    detailsContainer.innerHTML = "";
     return;
   }
-  const zone = zoneFor(data.level);
+
   const ts = data.timestamp ? new Date(data.timestamp).toLocaleString() : "—";
   profileNameContainer.textContent = `Profile: ${data.profile_name || "—"}`;
-  container.innerHTML = `
-    <div class="metric ${zone}">
+
+  // Heart Rate
+  const hrZone = zoneFor(data.level);
+  hrContainer.innerHTML = `
+    <div class="metric ${hrZone}">
       <span class="value">${data.level}</span>
       <span class="unit">bpm</span>
     </div>
+  `;
+
+  // Body Battery
+  const bbVal = data.battery_level;
+  const bbZone = bbZoneFor(bbVal);
+  bbContainer.innerHTML = bbVal != null
+    ? `<div class="metric ${bbZone}">
+         <span class="value">${bbVal}</span>
+         <span class="unit">%</span>
+       </div>`
+    : `<div class="metric bb-unknown"><span class="value">—</span></div>`;
+
+  // Details
+  detailsContainer.innerHTML = `
     <div class="details">
       <div>Обновлено: ${ts}</div>
-      <div>Статус: ${data.status || "—"}</div>
+      <div>HR статус: ${data.status || "—"}</div>
       <div class="${data.is_stale ? "stale" : "fresh"}">
         ${data.is_stale ? "⚠ Данные устарели" : "✓ Данные свежие"}
       </div>
@@ -121,13 +165,17 @@ function renderHistory(data) {
   }
 
   const labels = data.data.map((item) => new Date(item.time).toLocaleTimeString());
-  const values = data.data.map((item) => item.level);
-  const pointColors = values.map(colorFor);
+  const hrValues = data.data.map((item) => item.level);
+  const bbValues = data.data.map((item) => item.battery_level ?? null);
+  const hrPointColors = hrValues.map(colorFor);
+  const bbPointColors = bbValues.map(bbColorFor);
 
   if (historyChart) {
     historyChart.data.labels = labels;
-    historyChart.data.datasets[0].data = values;
-    historyChart.data.datasets[0].pointBackgroundColor = pointColors;
+    historyChart.data.datasets[0].data = hrValues;
+    historyChart.data.datasets[0].pointBackgroundColor = hrPointColors;
+    historyChart.data.datasets[1].data = bbValues;
+    historyChart.data.datasets[1].pointBackgroundColor = bbPointColors;
     historyChart.update();
     return;
   }
@@ -139,20 +187,49 @@ function renderHistory(data) {
       datasets: [
         {
           label: "Heart Rate (BPM)",
-          data: values,
+          data: hrValues,
           borderColor: "#2563eb",
-          backgroundColor: "rgba(37, 99, 235, 0.15)",
-          pointBackgroundColor: pointColors,
+          backgroundColor: "rgba(37, 99, 235, 0.08)",
+          pointBackgroundColor: hrPointColors,
+          pointRadius: 2,
+          fill: false,
+          tension: 0.3,
+          yAxisID: "yHR",
+        },
+        {
+          label: "Body Battery (%)",
+          data: bbValues,
+          borderColor: "#16a34a",
+          backgroundColor: "rgba(22, 163, 74, 0.08)",
+          pointBackgroundColor: bbPointColors,
           pointRadius: 3,
           fill: true,
-          tension: 0.3,
+          tension: 0.4,
+          spanGaps: true,
+          yAxisID: "yBB",
         },
       ],
     },
     options: {
       responsive: false,
+      interaction: { mode: "index", intersect: false },
       scales: {
-        y: { min: 30, max: 200, title: { display: true, text: "BPM" } },
+        yHR: {
+          type: "linear",
+          position: "left",
+          min: 30,
+          max: 200,
+          title: { display: true, text: "BPM" },
+          grid: { color: "rgba(37,99,235,0.1)" },
+        },
+        yBB: {
+          type: "linear",
+          position: "right",
+          min: 0,
+          max: 100,
+          title: { display: true, text: "Battery %" },
+          grid: { drawOnChartArea: false },
+        },
         x: { ticks: { maxTicksLimit: 12 } },
       },
       plugins: {

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class BatteryPoint(BaseModel):
     time: datetime
     level: int
+    battery_level: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -13,6 +14,7 @@ class BatteryPoint(BaseModel):
 class BatteryCurrent(BaseModel):
     timestamp: datetime
     level: int
+    battery_level: Optional[int] = None
     status: str
     minutes_since_update: int
     is_stale: bool

@@ -8,5 +8,6 @@ class BodyBatteryLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     measured_at = Column(DateTime(timezone=True), unique=True, index=True, nullable=False)
     level = Column(SmallInteger, nullable=False)
+    battery_level = Column(SmallInteger, nullable=True)
     fetched_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     profile_name = Column(String, nullable=True)

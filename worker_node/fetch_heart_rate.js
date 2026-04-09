@@ -81,12 +81,13 @@ async function main() {
     log('Failed to fetch profile name:', e?.message || e);
   }
 
-  // Собираем heart rate за каждый день в диапазоне [start..end]
-  const entries = [];
   const dayMs = 24 * 60 * 60 * 1000;
   const startDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
   const endDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+  const GC_API = 'https://connectapi.garmin.com';
 
+  // Собираем heart rate за каждый день в диапазоне [start..end]
+  const entries = [];
   for (let d = startDay.getTime(); d <= endDay.getTime(); d += dayMs) {
     const cdate = new Date(d);
     log('Fetching heart rate for', cdate.toISOString().slice(0, 10));
@@ -94,7 +95,7 @@ async function main() {
     try {
       data = await client.getHeartRate(cdate);
     } catch (e) {
-      log('No data for', cdate.toISOString().slice(0, 10), '-', e?.message || e);
+      log('No HR data for', cdate.toISOString().slice(0, 10), '-', e?.message || e);
       continue;
     }
 
@@ -108,12 +109,58 @@ async function main() {
         entries.push({
           measured_at: measuredAt.toISOString(),
           level: Math.round(bpm),
+          battery_level: null,
         });
       }
     }
   }
+  log(`Fetched ${entries.length} heart rate points`);
 
-  log(`Fetched ${entries.length} heart rate points (usedTokens=${usedTokens})`);
+  // Собираем Body Battery за тот же диапазон
+  const bbPoints = []; // {ts: ms, value: number}
+  for (let d = startDay.getTime(); d <= endDay.getTime(); d += dayMs) {
+    const dateString = new Date(d).toISOString().slice(0, 10);
+    const bbUrl = `${GC_API}/wellness-service/wellness/bodyBattery/startDate/${dateString}/endDate/${dateString}`;
+    log('Fetching body battery for', dateString);
+    try {
+      const data = await client.get(bbUrl);
+      if (Array.isArray(data)) {
+        for (const day of data) {
+          const vals = (day && day.bodyBatteryValuesArray) || [];
+          for (const item of vals) {
+            if (!Array.isArray(item) || item.length < 2) continue;
+            const [tsMs, val] = item;
+            if (tsMs == null || val == null) continue;
+            bbPoints.push({ ts: tsMs, value: val });
+          }
+        }
+      }
+    } catch (e) {
+      log('No BB data for', dateString, '-', e?.message || e);
+    }
+  }
+  log(`Fetched ${bbPoints.length} body battery points`);
+
+  // Привязываем ближайшее BB значение к каждой HR точке (±30 мин)
+  if (bbPoints.length > 0) {
+    bbPoints.sort((a, b) => a.ts - b.ts);
+    const MAX_DELTA_MS = 30 * 60 * 1000;
+    for (const entry of entries) {
+      const tsMs = new Date(entry.measured_at).getTime();
+      let lo = 0, hi = bbPoints.length - 1, best = -1, bestDelta = Infinity;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const delta = Math.abs(bbPoints[mid].ts - tsMs);
+        if (delta < bestDelta) { bestDelta = delta; best = mid; }
+        if (bbPoints[mid].ts < tsMs) lo = mid + 1;
+        else if (bbPoints[mid].ts > tsMs) hi = mid - 1;
+        else break;
+      }
+      entry.battery_level = (best >= 0 && bestDelta <= MAX_DELTA_MS) ? bbPoints[best].value : null;
+    }
+  }
+
+  log(`Done (usedTokens=${usedTokens})`);
   const output = JSON.stringify({ profile_name: profileName, entries });
   const outputFile = path.join(__dirname, 'tokens', '_result.json');
   fs.writeFileSync(outputFile, output, 'utf8');

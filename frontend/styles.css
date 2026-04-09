@@ -54,6 +54,33 @@ h1 {
   display: flex;
   gap: 1rem;
   align-items: center;
+  margin-bottom: 1rem;
+}
+
+.metrics-row {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.metric-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.metric-col h2 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.details-col {
+  flex: 1;
+  justify-content: center;
 }
 
 #get-now-btn {
@@ -108,3 +135,9 @@ h1 {
 .stale { color: #dc2626; font-weight: 600; }
 .fresh { color: #16a34a; font-weight: 600; }
 .error { color: #dc2626; }
+
+/* Body Battery зоны */
+.bb-high   { background: #16a34a; }   /* 75–100 */
+.bb-medium { background: #eab308; color: #111827; } /* 40–74 */
+.bb-low    { background: #dc2626; }   /* 0–39 */
+.bb-unknown { background: #6b7280; }

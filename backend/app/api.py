@@ -94,6 +94,7 @@ def get_current(db: Session = Depends(get_db)):
     return jsonable_encoder({
         "timestamp": current.measured_at,
         "level": current.level,
+        "battery_level": getattr(current, "battery_level", None),
         "status": status,
         "minutes_since_update": minutes_since_update,
         "is_stale": is_stale,
@@ -114,7 +115,7 @@ def get_history_endpoint(request: Request, db: Session = Depends(get_db)):
     rows = get_history(db, hours)
     return jsonable_encoder({
         "period_hours": hours,
-        "data": [{"time": row.measured_at, "level": row.level} for row in rows],
+        "data": [{"time": row.measured_at, "level": row.level, "battery_level": getattr(row, "battery_level", None)} for row in rows],
     })
 
 

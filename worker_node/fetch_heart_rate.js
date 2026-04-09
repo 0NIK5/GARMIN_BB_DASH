@@ -16,6 +16,17 @@ const { GarminConnect } = require('garmin-connect');
 const path = require('path');
 const fs = require('fs');
 
+// Метод getBodyBattery отсутствует в библиотеке — добавляем по аналогии с getHeartRate.
+// BB данные живут внутри dailyStress endpoint, поле bodyBatteryValuesArray.
+// Каждый элемент: [timestampMs, status, bodyBatteryLevel, delta].
+GarminConnect.prototype.getBodyBattery = async function(date = new Date()) {
+  const dateString = date.toISOString().slice(0, 10);
+  const data = await this.client.get(
+    'https://connectapi.garmin.com/wellness-service/wellness/dailyStress/' + dateString
+  );
+  return (data && data.bodyBatteryValuesArray) || [];
+};
+
 const TOKEN_DIR = path.join(__dirname, 'tokens');
 
 function log(...args) {
@@ -84,8 +95,6 @@ async function main() {
   const dayMs = 24 * 60 * 60 * 1000;
   const startDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
   const endDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
-  const GC_API = 'https://connectapi.garmin.com';
-
   // Собираем heart rate за каждый день в диапазоне [start..end]
   const entries = [];
   for (let d = startDay.getTime(); d <= endDay.getTime(); d += dayMs) {
@@ -119,24 +128,22 @@ async function main() {
   // Собираем Body Battery за тот же диапазон
   const bbPoints = []; // {ts: ms, value: number}
   for (let d = startDay.getTime(); d <= endDay.getTime(); d += dayMs) {
-    const dateString = new Date(d).toISOString().slice(0, 10);
-    const bbUrl = `${GC_API}/wellness-service/wellness/bodyBattery/startDate/${dateString}/endDate/${dateString}`;
-    log('Fetching body battery for', dateString);
+    const cdate = new Date(d);
+    log('Fetching body battery for', cdate.toISOString().slice(0, 10));
+    let data;
     try {
-      const data = await client.get(bbUrl);
-      if (Array.isArray(data)) {
-        for (const day of data) {
-          const vals = (day && day.bodyBatteryValuesArray) || [];
-          for (const item of vals) {
-            if (!Array.isArray(item) || item.length < 2) continue;
-            const [tsMs, val] = item;
-            if (tsMs == null || val == null) continue;
-            bbPoints.push({ ts: tsMs, value: val });
-          }
-        }
-      }
+      data = await client.getBodyBattery(cdate);
     } catch (e) {
-      log('No BB data for', dateString, '-', e?.message || e);
+      log('No BB data for', cdate.toISOString().slice(0, 10), '-', e?.message || e);
+      continue;
+    }
+    // data = [[timestampMs, status, bodyBatteryLevel, delta], ...]
+    if (!Array.isArray(data)) continue;
+    for (const item of data) {
+      if (!Array.isArray(item) || item.length < 3) continue;
+      const [tsMs, , level] = item;
+      if (tsMs == null || level == null) continue;
+      bbPoints.push({ ts: tsMs, value: level });
     }
   }
   log(`Fetched ${bbPoints.length} body battery points`);

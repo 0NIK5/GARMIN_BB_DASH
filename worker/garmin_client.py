@@ -77,7 +77,12 @@ class NodeGarminClient:
         entries: list[dict] = []
         for item in items:
             measured_at = datetime.fromisoformat(item["measured_at"].replace("Z", "+00:00"))
-            entries.append({"measured_at": measured_at, "level": int(item["level"])})
+            battery_level = item.get("battery_level")
+            entries.append({
+                "measured_at": measured_at,
+                "level": int(item["level"]),
+                "battery_level": int(battery_level) if battery_level is not None else None,
+            })
 
         logger.info("NodeGarminClient: got %d heart rate points", len(entries))
         return {"profile_name": profile_name, "entries": entries}

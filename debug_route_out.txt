@@ -1,3 +1,0 @@
-PATH /api/v1/config
-PATH /api/v1/battery/current
-PATH /api/v1/login

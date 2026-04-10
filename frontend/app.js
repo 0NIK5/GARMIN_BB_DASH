@@ -3,6 +3,13 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 минут
 
 let historyChart = null;
 
+// Helper function to adjust UTC time by +5 hours
+function adjustTimezoneOffset(dateString) {
+  const date = new Date(dateString);
+  const OFFSET_MS = 3 * 60 * 60 * 1000; // 5 hours in milliseconds
+  return new Date(date.getTime() + OFFSET_MS);
+}
+
 async function fetchConfig() {
   try {
     const response = await fetch(`${API_BASE}/config`);
@@ -114,7 +121,7 @@ function renderCurrent(data) {
     return;
   }
 
-  const ts = data.timestamp ? new Date(data.timestamp).toLocaleString() : "—";
+  const ts = data.timestamp ? adjustTimezoneOffset(data.timestamp).toLocaleString() : "—";
   profileNameContainer.textContent = `Profile: ${data.profile_name || "—"}`;
 
   // Heart Rate
@@ -164,7 +171,7 @@ function renderHistory(data) {
     return;
   }
 
-  const labels = data.data.map((item) => new Date(item.time).toLocaleTimeString());
+  const labels = data.data.map((item) => adjustTimezoneOffset(item.time).toLocaleTimeString());
   const hrValues = data.data.map((item) => item.level);
   const bbValues = data.data.map((item) => item.battery_level ?? null);
   const hrPointColors = hrValues.map(colorFor);

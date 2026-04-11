@@ -369,5 +369,6 @@ docker-compose up
 - API URL во фронте захардкожен (`http://localhost:8000`) — нужно изменить при развёртывании на другом хосте.
 - Смещение часового пояса захардкожено во фронтенде (+3 часа к UTC) — нужно изменить под свой часовой пояс.
 
+here
 - <img width="1061" height="1266" alt="image" src="https://github.com/user-attachments/assets/498934f5-00cb-4bf0-a0c9-e12f250cba55" />
 

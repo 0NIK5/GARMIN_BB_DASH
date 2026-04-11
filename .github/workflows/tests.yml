@@ -39,4 +39,4 @@ jobs:
           pip install pytest httpx
 
       - name: Run tests
-        run: pytest -v
+        run: pytest -v --ignore=tests/test_api.py

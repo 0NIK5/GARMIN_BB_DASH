@@ -23,12 +23,23 @@ _DEFAULT_DB_PATH = os.path.join(_PROJECT_ROOT, "data", "body_battery.db")
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{_DEFAULT_DB_PATH}")
 POLL_MINUTES = int(os.getenv("POLL_MINUTES", "5"))  # для отладки heart rate — каждые 5 минут
 LOOKBACK_HOURS_INITIAL = int(os.getenv("LOOKBACK_HOURS_INITIAL", "6"))
-CREDENTIALS_FILE = os.path.join(_PROJECT_ROOT, "backend", "data", "credentials.json")
+SLOTS = ("left", "right")
+CREDENTIALS_DIR = os.path.join(_PROJECT_ROOT, "backend", "data")
+TOKENS_ROOT = os.path.join(_PROJECT_ROOT, "worker_node", "tokens")
 
 
-def load_credentials():
-    if os.path.exists(CREDENTIALS_FILE):
-        with open(CREDENTIALS_FILE, "r") as f:
+def credentials_file(slot: str) -> str:
+    return os.path.join(CREDENTIALS_DIR, f"credentials_{slot}.json")
+
+
+def token_dir_for(slot: str) -> str:
+    return os.path.join(TOKENS_ROOT, slot)
+
+
+def load_credentials(slot: str):
+    path = credentials_file(slot)
+    if os.path.exists(path):
+        with open(path, "r") as f:
             return json.load(f)
     return None
 
@@ -104,22 +115,26 @@ def upsert_entries(db: Session, entries, username: str, profile_name=None) -> in
     return inserted
 
 
-def run_job():
-    logger.info("=== Job started (using Node.js helper) ===")
+def run_job(slot: str = "left"):
+    logger.info("=== Job started for slot '%s' (using Node.js helper) ===", slot)
 
-    creds = load_credentials()
+    if slot not in SLOTS:
+        logger.warning("Unknown slot '%s'", slot)
+        return
+
+    creds = load_credentials(slot)
     if not creds:
-        logger.warning("No credentials found. Please login via the web interface.")
+        logger.info("No credentials for slot '%s'. Skipping.", slot)
         return
 
     if not creds.get("username") or not creds.get("password"):
-        logger.warning("Invalid credentials: username and password must be provided.")
+        logger.warning("Invalid credentials in slot '%s': username and password required.", slot)
         return
 
     username = creds["username"]
     password = creds["password"]
 
-    client = NodeGarminClient(username=username, password=password)
+    client = NodeGarminClient(username=username, password=password, token_dir=token_dir_for(slot))
 
     try:
         client.login()
@@ -170,19 +185,32 @@ def run_job():
         raise
 
 
+def run_all_slots():
+    for slot in SLOTS:
+        try:
+            run_job(slot)
+        except Exception:
+            logger.exception("Job for slot '%s' failed", slot)
+
+
 def main():
     logger.info("Worker starting. Poll interval: %d minutes", POLL_MINUTES)
 
-    # Запускаем сразу один раз при старте (если есть кредентайлы)
-    creds = load_credentials()
-    if not creds:
+    any_creds = False
+    for slot in SLOTS:
+        creds = load_credentials(slot)
+        if creds:
+            any_creds = True
+            logger.info("Found credentials for slot '%s' (user '%s'). Initial run.", slot, creds.get("username"))
+            try:
+                run_job(slot)
+            except Exception:
+                logger.exception("Initial job for slot '%s' failed", slot)
+    if not any_creds:
         logger.warning("No credentials found on startup. Waiting for user to login via web interface.")
-    else:
-        logger.info(f"Found credentials for user '{creds.get('username')}'. Starting initial job run.")
-        run_job()
 
     scheduler = BlockingScheduler(timezone="UTC")
-    scheduler.add_job(run_job, "interval", minutes=POLL_MINUTES, id="fetch_heart_rate")
+    scheduler.add_job(run_all_slots, "interval", minutes=POLL_MINUTES, id="fetch_heart_rate_all")
 
     def shutdown(signum, frame):
         logger.info("Shutdown signal received, stopping scheduler")

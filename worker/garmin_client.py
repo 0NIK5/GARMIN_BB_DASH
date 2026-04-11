@@ -20,10 +20,11 @@ class NodeGarminClient:
     Токены кэшируются Node-скриптом в worker_node/tokens/.
     """
 
-    def __init__(self, username: str = "", password: str = ""):
+    def __init__(self, username: str = "", password: str = "", token_dir: str = ""):
         # username/password передаются через env, тут только для совместимого интерфейса
         self.username = username
         self.password = password
+        self.token_dir = token_dir
         if not os.path.exists(NODE_HELPER_SCRIPT):
             raise FileNotFoundError(f"Node helper not found: {NODE_HELPER_SCRIPT}")
 
@@ -37,6 +38,9 @@ class NodeGarminClient:
             env["GARMIN_USERNAME"] = self.username
         if self.password:
             env["GARMIN_PASSWORD"] = self.password
+        if self.token_dir:
+            os.makedirs(self.token_dir, exist_ok=True)
+            env["GARMIN_TOKEN_DIR"] = self.token_dir
 
         cmd = ["node", NODE_HELPER_SCRIPT, start.isoformat(), end.isoformat()]
         logger.info("Spawning node helper: %s", " ".join(cmd[:2]))
@@ -61,7 +65,8 @@ class NodeGarminClient:
             logger.error("Node helper failed with code %d", result.returncode)
             raise RuntimeError(f"Node helper exited with code {result.returncode}")
 
-        result_file = os.path.join(NODE_HELPER_DIR, "tokens", "_result.json")
+        token_dir = self.token_dir or os.path.join(NODE_HELPER_DIR, "tokens")
+        result_file = os.path.join(token_dir, "_result.json")
         try:
             with open(result_file, "r", encoding="utf-8") as f:
                 raw = json.load(f)

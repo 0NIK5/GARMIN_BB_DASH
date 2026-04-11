@@ -3,52 +3,99 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>Garmin Recovery Dashboard</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <header class="header">
-    <h1>GARMIN DASHBOARD</h1>
-    <div id="auth-section">
-      <div id="login-form" style="display: none;">
-        <input type="text" id="username" placeholder="Username" />
-        <input type="password" id="password" placeholder="Password" />
-        <button id="login-btn">Login</button>
+    <div class="header-slot" data-slot="left">
+      <div class="auth-section">
+        <div class="slot-label">Left account</div>
+        <div class="login-form" data-role="login-form">
+          <input type="text" data-role="username" placeholder="Username" />
+          <input type="password" data-role="password" placeholder="Password" />
+          <button data-role="login-btn">Login</button>
+        </div>
+        <div class="user-info" data-role="user-info" hidden>
+          <span data-role="username-display">—</span>
+          <button data-role="logout-btn">Logout</button>
+        </div>
       </div>
-      <div id="user-info" style="display: none;">
-        <span id="username-display">—</span>
-        <button id="logout-btn">Logout</button>
+    </div>
+    <h1 class="header-title">GARMIN DASHBOARD</h1>
+    <div class="header-slot header-slot-right" data-slot="right">
+      <div class="auth-section">
+        <div class="slot-label">Right account</div>
+        <div class="login-form" data-role="login-form">
+          <input type="text" data-role="username" placeholder="Username" />
+          <input type="password" data-role="password" placeholder="Password" />
+          <button data-role="login-btn">Login</button>
+        </div>
+        <div class="user-info" data-role="user-info" hidden>
+          <span data-role="username-display">—</span>
+          <button data-role="logout-btn">Logout</button>
+        </div>
       </div>
     </div>
   </header>
   <main class="container">
-    <section class="card">
-      <div class="current-block">
-        <div>
-          <div id="profile-name" class="profile-name">Profile: —</div>
+    <div class="metrics-grid">
+      <section class="card slot-card" data-slot="left">
+        <div class="current-block">
+          <div>
+            <div class="profile-name" data-role="profile-name">Profile: —</div>
+          </div>
+          <button class="get-now-btn" data-role="get-now-btn">Get Now</button>
         </div>
-        <button id="get-now-btn">Get Now</button>
-      </div>
-      <div class="metrics-row">
-        <div class="metric-col">
-          <h2>Heart Rate</h2>
-          <div id="current-status">Загрузка...</div>
+        <div class="metrics-row">
+          <div class="metric-col">
+            <h2>Heart Rate</h2>
+            <div data-role="current-status">Загрузка...</div>
+          </div>
+          <div class="metric-col">
+            <h2>Body Battery</h2>
+            <div data-role="battery-status">Загрузка...</div>
+          </div>
+          <div class="metric-col details-col">
+            <div data-role="current-details"></div>
+          </div>
         </div>
-        <div class="metric-col">
-          <h2>Body Battery</h2>
-          <div id="battery-status">Загрузка...</div>
+      </section>
+      <section class="card slot-card" data-slot="right">
+        <div class="current-block">
+          <div>
+            <div class="profile-name" data-role="profile-name">Profile: —</div>
+          </div>
+          <button class="get-now-btn" data-role="get-now-btn">Get Now</button>
         </div>
-        <div class="metric-col details-col">
-          <div id="current-details"></div>
+        <div class="metrics-row">
+          <div class="metric-col">
+            <h2>Heart Rate</h2>
+            <div data-role="current-status">Загрузка...</div>
+          </div>
+          <div class="metric-col">
+            <h2>Body Battery</h2>
+            <div data-role="battery-status">Загрузка...</div>
+          </div>
+          <div class="metric-col details-col">
+            <div data-role="current-details"></div>
+          </div>
         </div>
-      </div>
+      </section>
+    </div>
+    <section class="card chart-card" data-slot="left">
+      <h2>History (24h) — Left</h2>
+      <canvas data-role="historyChart" width="1100" height="360"></canvas>
     </section>
-    <section class="card">
-      <h2>History (24h)</h2>
-      <canvas id="historyChart" width="800" height="400"></canvas>
+    <section class="card chart-card" data-slot="right">
+      <h2>History (24h) — Right</h2>
+      <canvas data-role="historyChart" width="1100" height="360"></canvas>
     </section>
   </main>
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

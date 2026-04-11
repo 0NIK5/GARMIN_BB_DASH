@@ -27,7 +27,7 @@ GarminConnect.prototype.getBodyBattery = async function(date = new Date()) {
   return (data && data.bodyBatteryValuesArray) || [];
 };
 
-const TOKEN_DIR = path.join(__dirname, 'tokens');
+const TOKEN_DIR = process.env.GARMIN_TOKEN_DIR || path.join(__dirname, 'tokens');
 
 function log(...args) {
   // Весь лог — в stderr, чтобы stdout был чистым JSON
@@ -169,7 +169,7 @@ async function main() {
 
   log(`Done (usedTokens=${usedTokens})`);
   const output = JSON.stringify({ profile_name: profileName, entries });
-  const outputFile = path.join(__dirname, 'tokens', '_result.json');
+  const outputFile = path.join(TOKEN_DIR, '_result.json');
   fs.writeFileSync(outputFile, output, 'utf8');
   log('Result written to', outputFile);
 }

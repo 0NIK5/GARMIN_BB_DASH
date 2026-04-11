@@ -12,29 +12,87 @@ body {
 .header {
   background: #ffffff;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
-  padding: 1.5rem 2rem;
+  padding: 1rem 2rem;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-title {
+  margin: 0;
+  font-size: 1.5rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.header-slot {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+}
+
+.header-slot-right {
+  justify-content: flex-end;
+}
+
+.auth-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.slot-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+[hidden] { display: none !important; }
+
+.login-form {
+  display: flex;
+  gap: 0.5rem;
   align-items: center;
 }
 
-.header h1 {
-  margin: 0;
-  font-size: 1.75rem;
+.login-form input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.4rem;
+  font-size: 0.9rem;
+  width: 130px;
 }
 
-.username {
+.login-form button,
+.user-info button {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.4rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.login-form button:hover,
+.user-info button:hover {
+  background: #1d4ed8;
+}
+
+.user-info {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
   font-size: 0.95rem;
-  color: #6b7280;
-  padding: 0.5rem 1rem;
-  background: #f3f4f6;
-  border-radius: 0.5rem;
+  color: #374151;
 }
 
 .container {
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1.5rem 2rem 2rem;
 }
 
 h1 {
@@ -44,22 +102,55 @@ h1 {
 
 .card {
   background: #ffffff;
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   border-radius: 1rem;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.metrics-grid .card {
+  margin-bottom: 0;
+}
+
+.slot-card[data-slot="left"] {
+  border-left: 4px solid #2563eb;
+}
+
+.slot-card[data-slot="right"] {
+  border-left: 4px solid #16a34a;
+}
+
+.chart-card[data-slot="left"] {
+  border-left: 4px solid #2563eb;
+}
+
+.chart-card[data-slot="right"] {
+  border-left: 4px solid #16a34a;
+}
+
+.profile-name {
+  font-weight: 600;
+  color: #374151;
 }
 
 .current-block {
   display: flex;
   gap: 1rem;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 1rem;
 }
 
 .metrics-row {
   display: flex;
-  gap: 2rem;
+  gap: 1.5rem;
   align-items: flex-start;
   flex-wrap: wrap;
 }
@@ -72,7 +163,7 @@ h1 {
 
 .metric-col h2 {
   margin: 0 0 0.25rem 0;
-  font-size: 1rem;
+  font-size: 0.85rem;
   color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -81,9 +172,10 @@ h1 {
 .details-col {
   flex: 1;
   justify-content: center;
+  min-width: 160px;
 }
 
-#get-now-btn {
+.get-now-btn {
   background: #2563eb;
   color: #ffffff;
   border: none;
@@ -95,19 +187,19 @@ h1 {
   transition: background-color 0.2s;
 }
 
-#get-now-btn:hover:not(:disabled) {
+.get-now-btn:hover:not(:disabled) {
   background: #1d4ed8;
 }
 
-#get-now-btn:disabled {
+.get-now-btn:disabled {
   background: #9ca3af;
   cursor: not-allowed;
 }
 
 .metric {
-  font-size: 3rem;
+  font-size: 2.4rem;
   font-weight: 700;
-  padding: 0.5rem 1.25rem;
+  padding: 0.4rem 1rem;
   border-radius: 0.75rem;
   color: #fff;
   display: inline-flex;
@@ -120,7 +212,7 @@ h1 {
 .metric.zone-unknown { background: #6b7280; }
 
 .unit {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   margin-left: 0.25rem;
 }
 
@@ -128,7 +220,7 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: #374151;
 }
 
@@ -136,8 +228,26 @@ h1 {
 .fresh { color: #16a34a; font-weight: 600; }
 .error { color: #dc2626; }
 
-/* Body Battery зоны */
-.bb-high   { background: #16a34a; }   /* 75–100 */
-.bb-medium { background: #16a34a; color: #111827; } /* 40–74 */
-.bb-low    { background: #eab308; }   /* 0–39 */
+.bb-high   { background: #16a34a; }
+.bb-medium { background: #16a34a; color: #111827; }
+.bb-low    { background: #eab308; }
 .bb-unknown { background: #6b7280; }
+
+.chart-card canvas {
+  width: 100% !important;
+  max-width: 100%;
+  height: auto !important;
+}
+
+@media (max-width: 900px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .header {
+    grid-template-columns: 1fr;
+  }
+  .header-slot,
+  .header-slot-right {
+    justify-content: center;
+  }
+}

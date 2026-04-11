@@ -147,31 +147,31 @@ cd ../worker && pip install -r requirements.txt
 cd ../worker_node && npm install
 ```
 
-### Шаг 2: Запустить все сервисы
+### Шаг 2: Запустить все сервисы локально
 
+Запустить **каждый сервис в отдельном терминале**:
+
+#### Терминал 1 — Backend (порт 8000):
 ```bash
-# 1. Backend (порт 8000)
-cd backend && python -m uvicorn app.main:app --reload --port 8000 &
-BACKEND_PID=$!
-
-# 2. Frontend (порт 5500)
-cd ../frontend && python -m http.server 5500 &
-FRONTEND_PID=$!
-
-# 3. Worker (обновляет БД каждые 5 минут)
-cd ../worker && python -m worker.worker &
-WORKER_PID=$!
-
-echo "✅ Backend PID: $BACKEND_PID"
-echo "✅ Frontend PID: $FRONTEND_PID"
-echo "✅ Worker PID: $WORKER_PID"
-echo ""
-echo "🌐 Фронтенд: http://127.0.0.1:5500"
-echo "📡 Бэкенд: http://127.0.0.1:8000"
-echo ""
-echo "❌ Чтобы остановить все процессы:"
-echo "kill $BACKEND_PID $FRONTEND_PID $WORKER_PID"
+cd backend && python -m uvicorn app.main:app --reload --port 8000
 ```
+Увидишь: `Uvicorn running on http://127.0.0.1:8000`
+
+#### Терминал 2 — Frontend (порт 5500):
+```bash
+cd frontend && python -m http.server 5500
+```
+Увидишь: `Serving HTTP on 0.0.0.0 port 5500`
+
+#### Терминал 3 — Worker (обновляет БД каждые 5 минут):
+```bash
+python -m worker.worker
+```
+Увидишь: `Starting BlockingScheduler` и периодические обновления
+
+**Доступ:**
+- 🌐 Фронтенд: http://127.0.0.1:5500
+- 📡 Бэкенд API: http://127.0.0.1:8000/docs (Swagger)
 
 ---
 

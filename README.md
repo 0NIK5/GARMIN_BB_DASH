@@ -1,4 +1,4 @@
-# Garmin Heart Rate Dashboard
+# Garmin Heart Rate Dashboard.
 
 Лёгковесный дашборд для мониторинга пульса (Heart Rate) и Body Battery из Garmin Connect. Берёт данные из неофициального Garmin Connect API, складывает в SQLite БД и показывает в браузере с автообновлением. Поддерживает несколько Garmin-аккаунтов с независимыми логинами.
 

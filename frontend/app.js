@@ -1,46 +1,80 @@
 const API_BASE = "http://localhost:8000/api/v1";
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 минут
+const SLOTS = ["left", "right"];
 
-let historyChart = null;
+const charts = { left: null, right: null };
 
-async function fetchConfig() {
+function adjustTimezoneOffset(dateString) {
+  const date = new Date(dateString);
+  const OFFSET_MS = 3 * 60 * 60 * 1000;
+  return new Date(date.getTime() + OFFSET_MS);
+}
+
+function slotRoot(slot, kind) {
+  // kind: "header" | "card" | "chart"
+  const selector = {
+    header: `.header-slot[data-slot="${slot}"]`,
+    card: `.slot-card[data-slot="${slot}"]`,
+    chart: `.chart-card[data-slot="${slot}"]`,
+  }[kind];
+  return document.querySelector(selector);
+}
+
+function el(slot, kind, role) {
+  return slotRoot(slot, kind).querySelector(`[data-role="${role}"]`);
+}
+
+async function fetchConfig(slot) {
   try {
-    const response = await fetch(`${API_BASE}/config`);
-    return response.ok ? await response.json() : null;
+    const r = await fetch(`${API_BASE}/config?slot=${slot}`);
+    return r.ok ? await r.json() : null;
   } catch (err) {
-    console.error("fetchConfig failed:", err);
+    console.error(`fetchConfig(${slot}) failed:`, err);
     return null;
   }
 }
 
-function renderUsername(config) {
-  const loginForm = document.getElementById("login-form");
-  const userInfo = document.getElementById("user-info");
-  const usernameDisplay = document.getElementById("username-display");
-  const getNowBtn = document.getElementById("get-now-btn");
-
-  const isLoggedIn = config && config.username !== "Not logged in";
-
-  if (!isLoggedIn) {
-    loginForm.style.display = "block";
-    userInfo.style.display = "none";
-    getNowBtn.disabled = true;
-    getNowBtn.title = "Please login first";
-  } else {
-    loginForm.style.display = "none";
-    userInfo.style.display = "block";
-    usernameDisplay.textContent = config.username;
-    getNowBtn.disabled = false;
-    getNowBtn.title = "";
+async function fetchCurrent(slot) {
+  try {
+    const r = await fetch(`${API_BASE}/battery/current?slot=${slot}`);
+    return r.ok ? await r.json() : null;
+  } catch (err) {
+    console.error(`fetchCurrent(${slot}) failed:`, err);
+    return null;
   }
 }
 
-/**
- * Цветовая зона по пульсу (BPM):
- *   зелёный: 50-90   (норма покоя)
- *   жёлтый:  90-130  (умеренная нагрузка)
- *   красный: <50 или >130
- */
+async function fetchHistory(slot) {
+  try {
+    const r = await fetch(`${API_BASE}/battery/history?slot=${slot}&hours=24`);
+    return r.ok ? await r.json() : null;
+  } catch (err) {
+    console.error(`fetchHistory(${slot}) failed:`, err);
+    return null;
+  }
+}
+
+function renderUsername(slot, config) {
+  const loginForm = el(slot, "header", "login-form");
+  const userInfo = el(slot, "header", "user-info");
+  const usernameDisplay = el(slot, "header", "username-display");
+  const getNowBtn = el(slot, "card", "get-now-btn");
+
+  const isLoggedIn = config && config.username && config.username !== "Not logged in";
+
+  loginForm.hidden = isLoggedIn;
+  userInfo.hidden = !isLoggedIn;
+
+  if (isLoggedIn) {
+    usernameDisplay.textContent = config.username;
+    getNowBtn.disabled = false;
+    getNowBtn.title = "";
+  } else {
+    getNowBtn.disabled = true;
+    getNowBtn.title = "Please login first";
+  }
+}
+
 function zoneFor(bpm) {
   if (bpm == null) return "zone-unknown";
   if (bpm < 50 || bpm > 130) return "zone-red";
@@ -49,54 +83,68 @@ function zoneFor(bpm) {
 }
 
 function colorFor(bpm) {
-  const zone = zoneFor(bpm);
   return {
     "zone-green": "#16a34a",
     "zone-yellow": "#eab308",
     "zone-red": "#dc2626",
     "zone-unknown": "#6b7280",
-  }[zone];
+  }[zoneFor(bpm)];
 }
 
-async function fetchCurrent() {
-  try {
-    const response = await fetch(`${API_BASE}/battery/current`);
-    return response.ok ? await response.json() : null;
-  } catch (err) {
-    console.error("fetchCurrent failed:", err);
-    return null;
-  }
+function bbZoneFor(val) {
+  if (val == null) return "bb-unknown";
+  if (val >= 25) return "bb-high";
+  if (val >= 20) return "bb-medium";
+  return "bb-low";
 }
 
-async function fetchHistory() {
-  try {
-    const response = await fetch(`${API_BASE}/battery/history?hours=24`);
-    return response.ok ? await response.json() : null;
-  } catch (err) {
-    console.error("fetchHistory failed:", err);
-    return null;
-  }
+function bbColorFor(val) {
+  return {
+    "bb-high":    "#16a34a",
+    "bb-medium":  "#16a34a",
+    "bb-low":     "#dc2626",
+    "bb-unknown": "#6b7280",
+  }[bbZoneFor(val)];
 }
 
-function renderCurrent(data) {
-  const container = document.getElementById("current-status");
-  const profileNameContainer = document.getElementById("profile-name");
+function renderCurrent(slot, data) {
+  const hrContainer = el(slot, "card", "current-status");
+  const bbContainer = el(slot, "card", "battery-status");
+  const detailsContainer = el(slot, "card", "current-details");
+  const profileNameContainer = el(slot, "card", "profile-name");
+
   if (!data) {
     profileNameContainer.textContent = "Profile: —";
-    container.innerHTML = `<div class="error">Ошибка загрузки данных</div>`;
+    hrContainer.innerHTML = `<div class="error">Нет данных</div>`;
+    bbContainer.innerHTML = `<div class="error">—</div>`;
+    detailsContainer.innerHTML = "";
     return;
   }
-  const zone = zoneFor(data.level);
-  const ts = data.timestamp ? new Date(data.timestamp).toLocaleString() : "—";
+
+  const ts = data.timestamp ? adjustTimezoneOffset(data.timestamp).toLocaleString() : "—";
   profileNameContainer.textContent = `Profile: ${data.profile_name || "—"}`;
-  container.innerHTML = `
-    <div class="metric ${zone}">
+
+  const hrZone = zoneFor(data.level);
+  hrContainer.innerHTML = `
+    <div class="metric ${hrZone}">
       <span class="value">${data.level}</span>
       <span class="unit">bpm</span>
     </div>
+  `;
+
+  const bbVal = data.battery_level;
+  const bbZone = bbZoneFor(bbVal);
+  bbContainer.innerHTML = bbVal != null
+    ? `<div class="metric ${bbZone}">
+         <span class="value">${bbVal}</span>
+         <span class="unit">%</span>
+       </div>`
+    : `<div class="metric bb-unknown"><span class="value">—</span></div>`;
+
+  detailsContainer.innerHTML = `
     <div class="details">
       <div>Обновлено: ${ts}</div>
-      <div>Статус: ${data.status || "—"}</div>
+      <div>HR статус: ${data.status || "—"}</div>
       <div class="${data.is_stale ? "stale" : "fresh"}">
         ${data.is_stale ? "⚠ Данные устарели" : "✓ Данные свежие"}
       </div>
@@ -104,14 +152,14 @@ function renderCurrent(data) {
   `;
 }
 
-function renderHistory(data) {
-  const canvas = document.getElementById("historyChart");
+function renderHistory(slot, data) {
+  const canvas = el(slot, "chart", "historyChart");
   const ctx = canvas.getContext("2d");
 
   if (!data || !data.data || data.data.length === 0) {
-    if (historyChart) {
-      historyChart.destroy();
-      historyChart = null;
+    if (charts[slot]) {
+      charts[slot].destroy();
+      charts[slot] = null;
     }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.font = "16px sans-serif";
@@ -120,69 +168,98 @@ function renderHistory(data) {
     return;
   }
 
-  const labels = data.data.map((item) => new Date(item.time).toLocaleTimeString());
-  const values = data.data.map((item) => item.level);
-  const pointColors = values.map(colorFor);
+  const labels = data.data.map((item) => adjustTimezoneOffset(item.time).toLocaleTimeString());
+  const hrValues = data.data.map((item) => item.level);
+  const bbValues = data.data.map((item) => item.battery_level ?? null);
+  const hrPointColors = hrValues.map(colorFor);
+  const bbPointColors = bbValues.map(bbColorFor);
 
-  if (historyChart) {
-    historyChart.data.labels = labels;
-    historyChart.data.datasets[0].data = values;
-    historyChart.data.datasets[0].pointBackgroundColor = pointColors;
-    historyChart.update();
+  if (charts[slot]) {
+    charts[slot].data.labels = labels;
+    charts[slot].data.datasets[0].data = hrValues;
+    charts[slot].data.datasets[0].pointBackgroundColor = hrPointColors;
+    charts[slot].data.datasets[1].data = bbValues;
+    charts[slot].data.datasets[1].pointBackgroundColor = bbPointColors;
+    charts[slot].update();
     return;
   }
 
-  historyChart = new Chart(ctx, {
+  charts[slot] = new Chart(ctx, {
     type: "line",
     data: {
       labels,
       datasets: [
         {
           label: "Heart Rate (BPM)",
-          data: values,
+          data: hrValues,
           borderColor: "#2563eb",
-          backgroundColor: "rgba(37, 99, 235, 0.15)",
-          pointBackgroundColor: pointColors,
+          backgroundColor: "rgba(37, 99, 235, 0.08)",
+          pointBackgroundColor: hrPointColors,
+          pointRadius: 2,
+          fill: false,
+          tension: 0.3,
+          yAxisID: "yHR",
+        },
+        {
+          label: "Body Battery (%)",
+          data: bbValues,
+          borderColor: "#16a34a",
+          backgroundColor: "rgba(22, 163, 74, 0.08)",
+          pointBackgroundColor: bbPointColors,
           pointRadius: 3,
           fill: true,
-          tension: 0.3,
+          tension: 0.4,
+          spanGaps: true,
+          yAxisID: "yBB",
         },
       ],
     },
     options: {
       responsive: false,
+      interaction: { mode: "index", intersect: false },
       scales: {
-        y: { min: 30, max: 200, title: { display: true, text: "BPM" } },
+        yHR: {
+          type: "linear",
+          position: "left",
+          min: 30,
+          max: 200,
+          title: { display: true, text: "BPM" },
+          grid: { color: "rgba(37,99,235,0.1)" },
+        },
+        yBB: {
+          type: "linear",
+          position: "right",
+          min: 0,
+          max: 100,
+          title: { display: true, text: "Battery %" },
+          grid: { drawOnChartArea: false },
+        },
         x: { ticks: { maxTicksLimit: 12 } },
       },
-      plugins: {
-        legend: { display: true },
-      },
+      plugins: { legend: { display: true } },
     },
   });
 }
 
-async function login() {
-  const username = document.getElementById("username").value;
-  const password = document.getElementById("password").value;
+async function login(slot) {
+  const username = el(slot, "header", "username").value;
+  const password = el(slot, "header", "password").value;
   if (!username || !password) {
     alert("Please enter username and password");
     return;
   }
 
   try {
-    const response = await fetch(`${API_BASE}/login`, {
+    const r = await fetch(`${API_BASE}/login?slot=${slot}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    const result = await response.json();
+    const result = await r.json();
     if (result.success) {
-      alert("Logged in successfully");
-      // Очищаем input fields
-      document.getElementById("username").value = "";
-      document.getElementById("password").value = "";
-      load(); // reload to update UI
+      el(slot, "header", "username").value = "";
+      el(slot, "header", "password").value = "";
+      loadSlot(slot);
     } else {
       alert("Login failed: " + result.message);
     }
@@ -192,16 +269,12 @@ async function login() {
   }
 }
 
-async function logout() {
+async function logout(slot) {
   try {
-    const response = await fetch(`${API_BASE}/logout`, { method: "POST" });
-    const result = await response.json();
+    const r = await fetch(`${API_BASE}/logout?slot=${slot}`, { method: "POST" });
+    const result = await r.json();
     if (result.success) {
-      alert("Logged out successfully");
-      // Очищаем input fields
-      document.getElementById("username").value = "";
-      document.getElementById("password").value = "";
-      load(); // reload to update UI
+      loadSlot(slot);
     } else {
       alert("Logout failed: " + result.message);
     }
@@ -211,11 +284,10 @@ async function logout() {
   }
 }
 
-async function getNow() {
-  const btn = document.getElementById("get-now-btn");
+async function getNow(slot) {
+  const btn = el(slot, "card", "get-now-btn");
 
-  // Дополнительная проверка: убедиться, что пользователь залогинен
-  const config = await fetchConfig();
+  const config = await fetchConfig(slot);
   if (!config || config.username === "Not logged in") {
     alert("Please login first before refreshing data");
     return;
@@ -226,19 +298,19 @@ async function getNow() {
   btn.disabled = true;
 
   try {
-    const response = await fetch(`${API_BASE}/refresh`, { method: "POST" });
-    const result = await response.json();
+    const r = await fetch(`${API_BASE}/refresh?slot=${slot}`, { method: "POST" });
+    const result = await r.json();
 
-    if (response.status === 401) {
+    if (r.status === 401) {
       alert("Login session expired. Please login again.");
-      await load(); // reload to update UI
+      await loadSlot(slot);
       return;
     }
 
-    if (!response.ok || !result.success) {
+    if (!r.ok || !result.success) {
       throw new Error(result.detail || result.message || "Refresh failed");
     }
-    await load();
+    await loadSlot(slot);
   } catch (err) {
     console.error("GetNow error:", err);
     alert("Get Now failed: " + err.message);
@@ -248,17 +320,26 @@ async function getNow() {
   }
 }
 
-async function load() {
-  const [current, history, config] = await Promise.all([fetchCurrent(), fetchHistory(), fetchConfig()]);
-  renderCurrent(current);
-  renderHistory(history);
-  renderUsername(config);
+async function loadSlot(slot) {
+  const [current, history, config] = await Promise.all([
+    fetchCurrent(slot),
+    fetchHistory(slot),
+    fetchConfig(slot),
+  ]);
+  renderCurrent(slot, current);
+  renderHistory(slot, history);
+  renderUsername(slot, config);
 }
 
-load();
-setInterval(load, POLL_INTERVAL_MS);
+async function loadAll() {
+  await Promise.all(SLOTS.map(loadSlot));
+}
 
-// Event listeners
-document.getElementById("login-btn").addEventListener("click", login);
-document.getElementById("logout-btn").addEventListener("click", logout);
-document.getElementById("get-now-btn").addEventListener("click", getNow);
+for (const slot of SLOTS) {
+  el(slot, "header", "login-btn").addEventListener("click", () => login(slot));
+  el(slot, "header", "logout-btn").addEventListener("click", () => logout(slot));
+  el(slot, "card", "get-now-btn").addEventListener("click", () => getNow(slot));
+}
+
+loadAll();
+setInterval(loadAll, POLL_INTERVAL_MS);

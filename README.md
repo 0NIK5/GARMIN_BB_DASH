@@ -1,6 +1,6 @@
 # Garmin Heart Rate Dashboard
 
-Лёгковесный дашборд для мониторинга пульса (Heart Rate) из Garmin Connect. Берёт данные из неофициального Garmin Connect API, складывает в SQLite БД и показывает в браузере с автообновлением. Поддерживает несколько Garmin-аккаунтов с независимыми логинами.
+Лёгковесный дашборд для мониторинга пульса (Heart Rate) и Body Battery из Garmin Connect. Берёт данные из неофициального Garmin Connect API, складывает в SQLite БД и показывает в браузере с автообновлением. Поддерживает несколько Garmin-аккаунтов с независимыми логинами.
 
 ```
 Garmin Connect ──▶ worker (Python + Node helper) ──▶ SQLite ──▶ FastAPI ──▶ Frontend
@@ -97,12 +97,12 @@ result = subprocess.run(cmd, cwd=NODE_HELPER_DIR, env=env,
 
 - `main.py` — FastAPI app, CORS, роутер
 - `database.py` — SQLite engine с абсолютным путём (важно: worker и backend должны видеть одну БД)
-- `models.py` — модель `BodyBatteryLog` с полями: `id`, `measured_at` (UNIQUE), `level`, `fetched_at`, `profile_name`
+- `models.py` — модель `BodyBatteryLog` с полями: `id`, `measured_at` (UNIQUE), `level`, `battery_level`, `fetched_at`, `profile_name`
 - `api.py` — все эндпоинты (см. раздел API ниже)
 
 ### 5. Frontend (`frontend/`)
 
-- `index.html` — интерфейс с текущим пульсом, историческим графиком и управлением логинами.
+- `index.html` — интерфейс с текущим пульсом, Body Battery, историческим графиком и управлением логинами.
 - `app.js`:
   - `fetchCurrent` + `fetchHistory` параллельно через `Promise.all`,
   - `setInterval(load, 5 * 60 * 1000)` — автообновление каждые 5 минут,
@@ -110,10 +110,15 @@ result = subprocess.run(cmd, cwd=NODE_HELPER_DIR, env=env,
     - `zone-green`: 50–90 (норма покоя),
     - `zone-yellow`: 90–130 (умеренная нагрузка),
     - `zone-red`: < 50 или > 130,
+  - **цветовые зоны по Body Battery (%):**
+    - `bb-high`: >= 25 (зелёный),
+    - `bb-medium`: 20–24 (зелёный),
+    - `bb-low`: < 20 (красный),
+  - двухосевой график: HR (левая ось, BPM) и Body Battery (правая ось, %),
   - график обновляется in-place (не пересоздаётся) для плавности,
   - кнопка "Get Now" для немедленного обновления данных через API `/api/v1/refresh`,
   - управление логинами (вход/выход из Garmin Connect).
-- `styles.css` — стили для зон пульса и элементов управления.
+- `styles.css` — стили для зон пульса, Body Battery и элементов управления.
 
 ---
 
@@ -142,31 +147,31 @@ cd ../worker && pip install -r requirements.txt
 cd ../worker_node && npm install
 ```
 
-### Шаг 2: Запустить все сервисы
+### Шаг 2: Запустить все сервисы локально
 
+Запустить **каждый сервис в отдельном терминале**:
+
+#### Терминал 1 — Backend (порт 8000):
 ```bash
-# 1. Backend (порт 8000)
-cd backend && python -m uvicorn app.main:app --reload --port 8000 &
-BACKEND_PID=$!
-
-# 2. Frontend (порт 5500)
-cd ../frontend && python -m http.server 5500 &
-FRONTEND_PID=$!
-
-# 3. Worker (обновляет БД каждые 5 минут)
-cd ../worker && python -m worker.worker &
-WORKER_PID=$!
-
-echo "✅ Backend PID: $BACKEND_PID"
-echo "✅ Frontend PID: $FRONTEND_PID"
-echo "✅ Worker PID: $WORKER_PID"
-echo ""
-echo "🌐 Фронтенд: http://127.0.0.1:5500"
-echo "📡 Бэкенд: http://127.0.0.1:8000"
-echo ""
-echo "❌ Чтобы остановить все процессы:"
-echo "kill $BACKEND_PID $FRONTEND_PID $WORKER_PID"
+cd backend && python -m uvicorn app.main:app --reload --port 8000
 ```
+Увидишь: `Uvicorn running on http://127.0.0.1:8000`
+
+#### Терминал 2 — Frontend (порт 5500):
+```bash
+cd frontend && python -m http.server 5500
+```
+Увидишь: `Serving HTTP on 0.0.0.0 port 5500`
+
+#### Терминал 3 — Worker (обновляет БД каждые 5 минут):
+```bash
+python -m worker.worker
+```
+Увидишь: `Starting BlockingScheduler` и периодические обновления
+
+**Доступ:**
+- 🌐 Фронтенд: http://127.0.0.1:5500
+- 📡 Бэкенд API: http://127.0.0.1:8000/docs (Swagger)
 
 ---
 
@@ -229,34 +234,41 @@ python -m http.server 5500
 
 ### `GET /api/v1/battery/current`
 
-Текущий пульс с метаданными:
+Текущий пульс и Body Battery с метаданными:
 
 ```json
 {
   "timestamp": "2026-04-08T09:44:00",
   "level": 61,
+  "battery_level": 72,
   "status": "decreasing",
   "minutes_since_update": 7,
-  "is_stale": false
+  "is_stale": false,
+  "profile_name": "John Doe"
 }
 ```
 
+- `level` — пульс (BPM)
+- `battery_level` — Body Battery (%, может быть `null`)
 - `status`: `decreasing` / `increasing` / `stable` / `unknown` (на основе последних 3 точек)
 - `is_stale`: `true`, если последнее обновление >15 минут назад
+- `profile_name` — имя профиля Garmin (может быть `null`)
 
 ### `GET /api/v1/battery/history?hours=24`
 
-История пульса за N часов (1–168 часов):
+История пульса и Body Battery за N часов (1–168 часов):
 
 ```json
 {
   "period_hours": 24,
   "data": [
-    {"time": "2026-04-07T10:00:00", "level": 65},
-    {"time": "2026-04-07T10:02:00", "level": 64}
+    {"time": "2026-04-07T10:00:00", "level": 65, "battery_level": 80},
+    {"time": "2026-04-07T10:02:00", "level": 64, "battery_level": 79}
   ]
 }
 ```
+
+- `battery_level` может быть `null`, если Body Battery не доступен для данной точки
 
 ### `POST /api/v1/login`
 
@@ -289,16 +301,15 @@ python -m http.server 5500
 
 ### `GET /api/v1/config`
 
-Информация о конфигурации и статусе:
+Информация о статусе логина:
 
 ```json
 {
-  "poll_minutes": 5,
-  "lookback_hours_initial": 6,
-  "is_logged_in": true,
-  "current_username": "user@example.com"
+  "username": "user@example.com"
 }
 ```
+
+- Если пользователь не залогинен, `username` будет `"Not logged in"`
 
 ---
 
@@ -310,6 +321,7 @@ python -m http.server 5500
 | `id` | Integer | Primary Key |
 | `measured_at` | DateTime(tz) | UNIQUE INDEX, UTC |
 | `level` | SmallInteger | BPM (пульс) |
+| `battery_level` | SmallInteger | Body Battery (%, nullable) |
 | `fetched_at` | DateTime(tz) | Когда запись добавлена в БД |
 | `profile_name` | String | Имя профиля Garmin (для разных аккаунтов) |
 
@@ -355,4 +367,4 @@ docker-compose up
 ## Известные ограничения
 
 - API URL во фронте захардкожен (`http://localhost:8000`) — нужно изменить при развёртывании на другом хосте.
-- Метрика сейчас **Heart Rate** (пульс). Расширение требует изменений в Node helper (`fetch_heart_rate.js`) и моделях БД.
+- Смещение часового пояса захардкожено во фронтенде (+3 часа к UTC) — нужно изменить под свой часовой пояс.

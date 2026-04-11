@@ -12,9 +12,33 @@ from worker.garmin_client import NodeGarminClient, NODE_HELPER_SCRIPT, NODE_HELP
 
 
 # ---------------------------------------------------------------------------
-# NodeGarminClient.__init__
+# Fixtures / helpers
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def skip_if_no_script():
+    if not os.path.exists(NODE_HELPER_SCRIPT):
+        pytest.skip("Node helper script not found (expected in worker_node/)")
+
+
+def _make_result_file(data, token_dir=None):
+    """Write _result.json where the client expects it."""
+    if token_dir is None:
+        token_dir = os.path.join(NODE_HELPER_DIR, "tokens")
+    os.makedirs(token_dir, exist_ok=True)
+    result_path = os.path.join(token_dir, "_result.json")
+    with open(result_path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    return result_path
+
+
+def _ok_run():
+    return MagicMock(returncode=0, stdout="", stderr="[node] done")
+
+
+# ---------------------------------------------------------------------------
+# __init__
+# ---------------------------------------------------------------------------
 
 class TestNodeGarminClientInit:
     def test_raises_when_script_missing(self, monkeypatch):
@@ -22,157 +46,176 @@ class TestNodeGarminClientInit:
         with pytest.raises(FileNotFoundError, match="Node helper not found"):
             NodeGarminClient(username="user", password="pass")
 
-    def test_init_success(self):
-        # NODE_HELPER_SCRIPT should exist in the repo
-        if not os.path.exists(NODE_HELPER_SCRIPT):
-            pytest.skip("Node helper script not found (expected in worker_node/)")
-        client = NodeGarminClient(username="user", password="pass")
-        assert client.username == "user"
-        assert client.password == "pass"
+    def test_init_stores_credentials(self):
+        client = NodeGarminClient(username="user@test.com", password="secret")
+        assert client.username == "user@test.com"
+        assert client.password == "secret"
+
+    def test_init_stores_token_dir(self, tmp_path):
+        client = NodeGarminClient(username="u", password="p", token_dir=str(tmp_path))
+        assert client.token_dir == str(tmp_path)
+
+    def test_init_default_token_dir_is_empty(self):
+        client = NodeGarminClient(username="u", password="p")
+        assert client.token_dir == ""
 
 
 # ---------------------------------------------------------------------------
-# NodeGarminClient.login
+# login (no-op)
 # ---------------------------------------------------------------------------
-
 
 class TestNodeGarminClientLogin:
     def test_login_is_noop(self):
-        if not os.path.exists(NODE_HELPER_SCRIPT):
-            pytest.skip("Node helper script not found")
         client = NodeGarminClient(username="user", password="pass")
-        # login() should not raise and is a no-op
-        client.login()
+        client.login()  # must not raise
 
 
 # ---------------------------------------------------------------------------
-# NodeGarminClient.get_heart_rate
+# get_heart_rate — default token dir
 # ---------------------------------------------------------------------------
 
-
-class TestNodeGarminClientGetHeartRate:
-    @pytest.fixture(autouse=True)
-    def _skip_if_no_script(self):
-        if not os.path.exists(NODE_HELPER_SCRIPT):
-            pytest.skip("Node helper script not found")
-
-    def _make_result_file(self, data):
-        """Write a _result.json file that the client will read."""
-        result_path = os.path.join(NODE_HELPER_DIR, "tokens", "_result.json")
-        os.makedirs(os.path.dirname(result_path), exist_ok=True)
-        with open(result_path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-
+class TestGetHeartRateDefault:
     @patch("worker.garmin_client.subprocess.run")
     def test_successful_fetch(self, mock_run):
         now = datetime.now(timezone.utc)
-        result_data = {
-            "profile_name": "TestUser",
-            "entries": [
-                {"measured_at": now.isoformat(), "level": 72},
-            ],
-        }
-        self._make_result_file(result_data)
-
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",
-            stderr="[node] Fetched 1 heart rate points",
-        )
-
+        _make_result_file({"profile_name": "TestUser", "entries": [
+            {"measured_at": now.isoformat(), "level": 72},
+        ]})
+        mock_run.return_value = _ok_run()
         client = NodeGarminClient(username="user", password="pass")
         result = client.get_heart_rate(now - timedelta(hours=1), now)
-
         assert result["profile_name"] == "TestUser"
         assert len(result["entries"]) == 1
         assert result["entries"][0]["level"] == 72
-        mock_run.assert_called_once()
 
     @patch("worker.garmin_client.subprocess.run")
-    def test_nonzero_exit_code_raises(self, mock_run):
-        mock_run.return_value = MagicMock(
-            returncode=3,
-            stdout="",
-            stderr="LOGIN_FAILED: some error",
-        )
-
+    def test_nonzero_exit_raises(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=3, stdout="", stderr="LOGIN_FAILED")
         client = NodeGarminClient(username="user", password="pass")
         now = datetime.now(timezone.utc)
-
         with pytest.raises(RuntimeError, match="Node helper exited with code 3"):
             client.get_heart_rate(now - timedelta(hours=1), now)
 
     @patch("worker.garmin_client.subprocess.run")
     def test_timeout_raises(self, mock_run):
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="node", timeout=120)
-
         client = NodeGarminClient(username="user", password="pass")
         now = datetime.now(timezone.utc)
-
         with pytest.raises(subprocess.TimeoutExpired):
             client.get_heart_rate(now - timedelta(hours=1), now)
 
     @patch("worker.garmin_client.subprocess.run")
     def test_missing_result_file_raises(self, mock_run):
-        # Don't create _result.json
-        result_path = os.path.join(NODE_HELPER_DIR, "tokens", "_result.json")
-        if os.path.exists(result_path):
-            os.remove(result_path)
-
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",
-            stderr="",
-        )
-
+        default_result = os.path.join(NODE_HELPER_DIR, "tokens", "_result.json")
+        if os.path.exists(default_result):
+            os.remove(default_result)
+        mock_run.return_value = _ok_run()
         client = NodeGarminClient(username="user", password="pass")
         now = datetime.now(timezone.utc)
-
         with pytest.raises(FileNotFoundError):
             client.get_heart_rate(now - timedelta(hours=1), now)
 
     @patch("worker.garmin_client.subprocess.run")
     def test_result_file_cleaned_up_after_read(self, mock_run):
         now = datetime.now(timezone.utc)
-        self._make_result_file({"profile_name": None, "entries": []})
-
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-
-        client = NodeGarminClient(username="user", password="pass")
-        client.get_heart_rate(now - timedelta(hours=1), now)
-
-        result_path = os.path.join(NODE_HELPER_DIR, "tokens", "_result.json")
+        result_path = _make_result_file({"profile_name": None, "entries": []})
+        mock_run.return_value = _ok_run()
+        NodeGarminClient(username="user", password="pass").get_heart_rate(now - timedelta(hours=1), now)
         assert not os.path.exists(result_path)
 
     @patch("worker.garmin_client.subprocess.run")
-    def test_env_credentials_passed(self, mock_run):
+    def test_credentials_passed_via_env(self, mock_run):
         now = datetime.now(timezone.utc)
-        self._make_result_file({"profile_name": None, "entries": []})
-
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-
-        client = NodeGarminClient(username="testuser@gmail.com", password="secret123")
-        client.get_heart_rate(now - timedelta(hours=1), now)
-
-        call_kwargs = mock_run.call_args
-        env = call_kwargs.kwargs.get("env") or call_kwargs[1].get("env")
+        _make_result_file({"profile_name": None, "entries": []})
+        mock_run.return_value = _ok_run()
+        NodeGarminClient(username="testuser@gmail.com", password="secret123").get_heart_rate(
+            now - timedelta(hours=1), now
+        )
+        env = mock_run.call_args.kwargs.get("env") or mock_run.call_args[1].get("env")
         assert env["GARMIN_USERNAME"] == "testuser@gmail.com"
         assert env["GARMIN_PASSWORD"] == "secret123"
 
     @patch("worker.garmin_client.subprocess.run")
     def test_parses_z_suffix_dates(self, mock_run):
         now = datetime.now(timezone.utc)
-        self._make_result_file({
-            "profile_name": "User",
-            "entries": [
-                {"measured_at": "2026-04-09T10:00:00Z", "level": 65},
-            ],
-        })
+        _make_result_file({"profile_name": "U", "entries": [
+            {"measured_at": "2026-04-09T10:00:00Z", "level": 65},
+        ]})
+        mock_run.return_value = _ok_run()
+        result = NodeGarminClient(username="u", password="p").get_heart_rate(now - timedelta(hours=1), now)
+        entry = result["entries"][0]
+        assert entry["measured_at"].tzinfo is not None
+        assert entry["level"] == 65
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    @patch("worker.garmin_client.subprocess.run")
+    def test_battery_level_parsed(self, mock_run):
+        now = datetime.now(timezone.utc)
+        _make_result_file({"profile_name": "U", "entries": [
+            {"measured_at": now.isoformat(), "level": 70, "battery_level": 55},
+        ]})
+        mock_run.return_value = _ok_run()
+        result = NodeGarminClient(username="u", password="p").get_heart_rate(now - timedelta(hours=1), now)
+        assert result["entries"][0]["battery_level"] == 55
 
-        client = NodeGarminClient(username="user", password="pass")
-        result = client.get_heart_rate(now - timedelta(hours=1), now)
+    @patch("worker.garmin_client.subprocess.run")
+    def test_null_battery_level_allowed(self, mock_run):
+        now = datetime.now(timezone.utc)
+        _make_result_file({"profile_name": "U", "entries": [
+            {"measured_at": now.isoformat(), "level": 70, "battery_level": None},
+        ]})
+        mock_run.return_value = _ok_run()
+        result = NodeGarminClient(username="u", password="p").get_heart_rate(now - timedelta(hours=1), now)
+        assert result["entries"][0]["battery_level"] is None
 
-        assert result["entries"][0]["measured_at"].tzinfo is not None
-        assert result["entries"][0]["level"] == 65
+
+# ---------------------------------------------------------------------------
+# get_heart_rate — custom token_dir (slot isolation)
+# ---------------------------------------------------------------------------
+
+class TestGetHeartRateWithTokenDir:
+    @patch("worker.garmin_client.subprocess.run")
+    def test_token_dir_env_set(self, mock_run, tmp_path):
+        now = datetime.now(timezone.utc)
+        custom_dir = str(tmp_path / "left")
+        _make_result_file({"profile_name": None, "entries": []}, token_dir=custom_dir)
+        mock_run.return_value = _ok_run()
+        NodeGarminClient(username="u", password="p", token_dir=custom_dir).get_heart_rate(
+            now - timedelta(hours=1), now
+        )
+        env = mock_run.call_args.kwargs.get("env") or mock_run.call_args[1].get("env")
+        assert env["GARMIN_TOKEN_DIR"] == custom_dir
+
+    @patch("worker.garmin_client.subprocess.run")
+    def test_result_read_from_custom_dir(self, mock_run, tmp_path):
+        now = datetime.now(timezone.utc)
+        custom_dir = str(tmp_path / "right")
+        _make_result_file(
+            {"profile_name": "RightUser", "entries": [{"measured_at": now.isoformat(), "level": 88}]},
+            token_dir=custom_dir,
+        )
+        mock_run.return_value = _ok_run()
+        result = NodeGarminClient(username="u", password="p", token_dir=custom_dir).get_heart_rate(
+            now - timedelta(hours=1), now
+        )
+        assert result["profile_name"] == "RightUser"
+        assert result["entries"][0]["level"] == 88
+
+    @patch("worker.garmin_client.subprocess.run")
+    def test_result_file_cleaned_up_from_custom_dir(self, mock_run, tmp_path):
+        now = datetime.now(timezone.utc)
+        custom_dir = str(tmp_path / "left")
+        result_path = _make_result_file({"profile_name": None, "entries": []}, token_dir=custom_dir)
+        mock_run.return_value = _ok_run()
+        NodeGarminClient(username="u", password="p", token_dir=custom_dir).get_heart_rate(
+            now - timedelta(hours=1), now
+        )
+        assert not os.path.exists(result_path)
+
+    @patch("worker.garmin_client.subprocess.run")
+    def test_no_token_dir_env_when_not_set(self, mock_run):
+        now = datetime.now(timezone.utc)
+        _make_result_file({"profile_name": None, "entries": []})
+        mock_run.return_value = _ok_run()
+        NodeGarminClient(username="u", password="p").get_heart_rate(now - timedelta(hours=1), now)
+        env = mock_run.call_args.kwargs.get("env") or mock_run.call_args[1].get("env")
+        assert "GARMIN_TOKEN_DIR" not in env

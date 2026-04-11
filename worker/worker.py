@@ -50,7 +50,8 @@ def _ensure_column(engine, col_name, col_type_sql):
 class BodyBatteryLog(Base):
     __tablename__ = "body_battery_logs"
     id = Column(Integer, primary_key=True, index=True)
-    measured_at = Column(DateTime(timezone=True), unique=True, index=True, nullable=False)
+    username = Column(String, nullable=False, index=True)
+    measured_at = Column(DateTime(timezone=True), index=True, nullable=False)
     level = Column(SmallInteger, nullable=False)
     battery_level = Column(SmallInteger, nullable=True)
     fetched_at = Column(DateTime(timezone=True), nullable=False)
@@ -67,21 +68,24 @@ def get_engine():
     return create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 
-def get_last_timestamp(db: Session):
-    stmt = select(BodyBatteryLog).order_by(BodyBatteryLog.measured_at.desc()).limit(1)
+def get_last_timestamp(db: Session, username: str):
+    stmt = select(BodyBatteryLog).where(BodyBatteryLog.username == username).order_by(BodyBatteryLog.measured_at.desc()).limit(1)
     record = db.scalars(stmt).first()
     return record.measured_at if record else None
 
 
-def upsert_entries(db: Session, entries, profile_name=None) -> int:
+def upsert_entries(db: Session, entries, username: str, profile_name=None) -> int:
     inserted = 0
     now = datetime.now(timezone.utc)
     for item in entries:
-        stmt = select(BodyBatteryLog).where(BodyBatteryLog.measured_at == item["measured_at"])
+        stmt = select(BodyBatteryLog).where(
+            (BodyBatteryLog.username == username) & (BodyBatteryLog.measured_at == item["measured_at"])
+        )
         existing = db.scalars(stmt).first()
         if existing is None:
             db.add(
                 BodyBatteryLog(
+                    username=username,
                     measured_at=item["measured_at"],
                     level=item["level"],
                     battery_level=item.get("battery_level"),
@@ -122,11 +126,22 @@ def run_job():
 
         engine = get_engine()
         Base.metadata.create_all(bind=engine)
+        _ensure_column(engine, "username", "TEXT")
         _ensure_column(engine, "profile_name", "TEXT")
         _ensure_column(engine, "battery_level", "SMALLINT")
 
+        # Заполнить username для старых записей, если они есть
+        with Session(engine) as temp_db:
+            old_records = temp_db.scalars(
+                select(BodyBatteryLog).where(BodyBatteryLog.username.is_(None))
+            ).all()
+            if old_records:
+                for record in old_records:
+                    record.username = username
+                temp_db.commit()
+
         with Session(engine) as db:
-            last_ts = get_last_timestamp(db)
+            last_ts = get_last_timestamp(db, username)
             now = datetime.now(timezone.utc)
             if last_ts:
                 # last_ts может прийти naive из SQLite → нормализуем
@@ -140,11 +155,11 @@ def run_job():
             payload = client.get_heart_rate(start, now)
             profile_name = payload.get("profile_name")
             entries = payload.get("entries", [])
-            inserted = upsert_entries(db, entries, profile_name=profile_name)
+            inserted = upsert_entries(db, entries, username=username, profile_name=profile_name)
             # Update profile_name on the latest record even if no new entries were inserted
             if profile_name:
                 latest = db.scalars(
-                    select(BodyBatteryLog).order_by(BodyBatteryLog.measured_at.desc()).limit(1)
+                    select(BodyBatteryLog).where(BodyBatteryLog.username == username).order_by(BodyBatteryLog.measured_at.desc()).limit(1)
                 ).first()
                 if latest and latest.profile_name != profile_name:
                     latest.profile_name = profile_name

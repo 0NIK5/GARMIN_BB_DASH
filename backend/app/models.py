@@ -6,7 +6,8 @@ class BodyBatteryLog(Base):
     __tablename__ = "body_battery_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    measured_at = Column(DateTime(timezone=True), unique=True, index=True, nullable=False)
+    username = Column(String, nullable=False, index=True)
+    measured_at = Column(DateTime(timezone=True), index=True, nullable=False)
     level = Column(SmallInteger, nullable=False)
     battery_level = Column(SmallInteger, nullable=True)
     fetched_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

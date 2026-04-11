@@ -81,11 +81,16 @@ def _ensure_utc(dt: datetime) -> datetime:
 
 @router.get("/battery/current")
 def get_current(db: Session = Depends(get_db)):
-    current = get_latest_log(db)
+    creds = load_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not logged in. Please login first.")
+
+    username = creds["username"]
+    current = get_latest_log(db, username)
     if current is None:
         raise HTTPException(status_code=404, detail="No heart rate data available")
 
-    history = get_history(db, hours=3)
+    history = get_history(db, hours=3, username=username)
     status = compute_status(history)
     measured_at_utc = _ensure_utc(current.measured_at)
     minutes_since_update = int((datetime.now(timezone.utc) - measured_at_utc).total_seconds() // 60)
@@ -104,6 +109,11 @@ def get_current(db: Session = Depends(get_db)):
 
 @router.get("/battery/history")
 def get_history_endpoint(request: Request, db: Session = Depends(get_db)):
+    creds = load_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Not logged in. Please login first.")
+
+    username = creds["username"]
     hours_param = request.query_params.get("hours", "24")
     try:
         hours = int(hours_param)
@@ -112,7 +122,7 @@ def get_history_endpoint(request: Request, db: Session = Depends(get_db)):
     if hours < 1 or hours > 168:
         raise HTTPException(status_code=400, detail="hours must be between 1 and 168")
 
-    rows = get_history(db, hours)
+    rows = get_history(db, hours, username)
     return jsonable_encoder({
         "period_hours": hours,
         "data": [{"time": row.measured_at, "level": row.level, "battery_level": getattr(row, "battery_level", None)} for row in rows],

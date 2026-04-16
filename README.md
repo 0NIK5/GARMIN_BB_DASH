@@ -153,9 +153,12 @@ cd ../worker_node && npm install
 
 #### Терминал 1 — Backend (порт 8000):
 ```bash
-cd backend && python -m uvicorn app.main:app --reload --port 8000
+cd backend
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-Увидишь: `Uvicorn running on http://127.0.0.1:8000`
+Увидишь: `Uvicorn running on http://0.0.0.0:8000`
+
+> Флаг `--host 0.0.0.0` делает backend доступным из локальной сети (например, с телефона по `http://<IP_ПК>:8000`). Без него uvicorn слушает только `127.0.0.1` и открывается только с самого ПК.
 
 #### Терминал 2 — Frontend (порт 5500):
 ```bash
@@ -182,10 +185,10 @@ python -m worker.worker
 ```bash
 cd backend
 pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Бэкенд запустится на **http://127.0.0.1:8000**
+Бэкенд запустится на **http://0.0.0.0:8000** (доступен локально как `http://127.0.0.1:8000` и по сети как `http://<IP_ПК>:8000`).
 
 ### 2. Worker (фоновый scheduler)
 

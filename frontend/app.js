@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8000/api/v1";
+const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api/v1`;
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 минут
 const SLOTS = ["left", "right"];
 
